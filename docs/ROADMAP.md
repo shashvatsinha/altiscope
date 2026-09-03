@@ -53,7 +53,10 @@ amended. Nothing below should be built at scale before this.
 
 ## 6. Hardening for organizations
 
-- Bedrock, Vertex, Foundry and OpenAI-compatible provider adapters.
+- Bedrock, Vertex and Foundry clients for the Anthropic adapter; a Gemini adapter.
+  (The chat-completions adapter already covers OpenAI, Azure and open-source servers.)
+- Per-model golden-set results published in the registry so "which models are good
+  enough for verification" is answered by data.
 - Payload retention modes; encryption at rest guidance; backup/restore docs.
 - Helm chart or equivalent; health endpoints; metrics.
 

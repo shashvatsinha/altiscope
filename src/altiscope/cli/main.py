@@ -44,16 +44,25 @@ def models_list() -> None:
     """Show models and per-stage routing from the registry."""
     settings = load_settings()
     registry = Registry.load(settings.models_config)
+    typer.echo("providers:")
+    for prov in registry.providers.values():
+        auth = f"key from ${prov.api_key_env}" if prov.api_key_env else "no auth"
+        typer.echo(f"  {prov.name:<12} {prov.kind:<18} {prov.base_url or '(sdk default)'}  {auth}")
     typer.echo("models:")
     for spec in registry.models.values():
         typer.echo(
             f"  {spec.id:<20} {spec.provider:<10} ctx={spec.context_window:>9,} "
             f"out={spec.max_output_tokens:>7,} "
-            f"${spec.input_usd_per_mtok}/${spec.output_usd_per_mtok} per MTok"
+            f"${spec.input_usd_per_mtok}/${spec.output_usd_per_mtok} per MTok  "
+            f"[{spec.provider}] {sorted(spec.capabilities)}"
         )
     typer.echo("stages:")
     for stage, cfg in registry.stages.items():
-        extra = " (must differ from producer)" if cfg.must_differ_from_producer else ""
+        extra = (
+            f" (independent of producer: {cfg.producer_independence})"
+            if cfg.producer_independence != "none"
+            else ""
+        )
         typer.echo(
             f"  {stage:<12} effort={cfg.effort:<6} reserved_out={cfg.reserved_output_tokens:>6,} "
             f"candidates={cfg.candidates}{extra}"

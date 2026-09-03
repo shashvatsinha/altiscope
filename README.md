@@ -63,7 +63,7 @@ Each of these has a fuller record in [`docs/adr/`](docs/adr/).
 | **Postgres only, hand-written SQL migrations** | The schema is the provenance contract and should be readable as SQL. `CHECK` constraints enforce that every claim source points at exactly one real row. Supporting SQLite too would mean a second dialect to verify every provenance query against. |
 | **GitHub App for ingestion, polling first, webhooks later** | Least-privilege, short-lived tokens, GHES-compatible, and an identity a security team can approve. Polling always works; webhooks are a freshness optimization that never replaces reconciliation. |
 | **Snapshots stored, summaries computed from snapshots** | Reproducible summaries with evidence pointers that stay valid regardless of what happens to the repository later. |
-| **Model registry in YAML, adapter per provider** | Enterprises mandate providers. Routing by fit with a recorded reason gives empirical model comparison on real output. A multi-provider abstraction library was rejected for its weak, uneven structured-output support. |
+| **Any model, via a YAML registry and two adapters** | Enterprises mandate providers, and some allow nothing outside their network. A native Anthropic adapter plus one chat-completions adapter cover Claude, GPT, Azure, and open-source models on Ollama, vLLM, llama.cpp or LM Studio; providers are endpoints, declared as many times as needed. Models declare capabilities and the adapter falls back from schema-enforced to prompted JSON; validation against the snapshot is the guarantee either way. Routing by fit with a recorded reason gives empirical model comparison on real output. A multi-provider abstraction library was rejected for its uneven structured-output support. |
 | **Second-model verification, default on** | Roughly doubles per-PR cost, once. It is the cheapest strong signal available for the property the system exists to provide. |
 | **Query-time reduction tree for large windows** | Honors "no pre-computed rollups" while fitting in a context window. Intermediates are stored with their own provenance so drill-down works at every level. |
 | **Postgres-backed job queue** | PRs merge at human pace. A second queue system is not justified by the throughput. |
@@ -97,7 +97,8 @@ uv sync --extra dev
 docker compose up -d db
 cp .env.example .env            # fill in what you have
 uv run altiscope db migrate
-uv run altiscope models list    # show the registry
+uv run altiscope models list    # show providers, models, routing
+# Other layouts: ALTISCOPE_MODELS_CONFIG=config/examples/ollama.yaml (fully local)
 uv run altiscope models route pr_summary --input-tokens 120000
 uv run pytest
 ```

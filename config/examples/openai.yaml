@@ -1,0 +1,38 @@
+# OpenAI for every stage. Model ids, context windows and prices are examples: confirm
+# them against https://platform.openai.com/docs/models before use.
+providers:
+  openai:
+    kind: openai_compatible
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+
+models:
+  gpt-5:
+    provider: openai
+    display_name: GPT-5
+    context_window: 400000
+    max_output_tokens: 128000
+    capabilities: [json_schema, reasoning_effort]
+  gpt-5-mini:
+    provider: openai
+    display_name: GPT-5 mini
+    context_window: 400000
+    max_output_tokens: 128000
+    capabilities: [json_schema, reasoning_effort]
+
+input_budget_fraction: 0.75
+
+stages:
+  pr_summary:
+    candidates: [gpt-5]
+    effort: high
+    reserved_output_tokens: 16000
+  aggregate:
+    candidates: [gpt-5]
+    effort: high
+    reserved_output_tokens: 16000
+  verify:
+    candidates: [gpt-5-mini, gpt-5]
+    effort: high
+    reserved_output_tokens: 4000
+    producer_independence: model

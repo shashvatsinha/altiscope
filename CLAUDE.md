@@ -25,9 +25,14 @@ change needs a decision reversed, add a superseding ADR in the same PR.
   Postgres; keep them green.
 - pyright is in strict mode. Do not loosen it; annotate.
 - Schema changes are a new numbered file in `migrations/`. Never edit an applied one.
-- Anthropic SDK usage: structured output via `client.messages.parse(..., output_format=Model)`;
-  adaptive thinking; `output_config={"effort": ...}`; check `stop_reason` for `refusal`.
-  Model ids are as in `config/models.yaml`, without date suffixes.
+- Provider neutrality is a requirement, not a preference. Nothing outside
+  `src/altiscope/llm/*_provider.py` may import a vendor SDK. New model support is a
+  registry entry; new protocol support is one adapter file implementing `Provider`.
+- Adapter notes. Anthropic: `client.messages.parse(..., output_format=Model)`, adaptive
+  thinking, `output_config={"effort": ...}`, check `stop_reason` for `refusal`; ids
+  without date suffixes. Chat-completions: `chat.completions.parse` in `native` mode,
+  `response_format: json_object` in `json_mode`, prompted schema otherwise; report
+  invalid JSON as `stop_reason="invalid_output"`, never raise.
 
 ## Where things are
 

@@ -1,0 +1,40 @@
+# Fully local: open-source models on Ollama, nothing leaves the machine.
+# Model names and context lengths depend on what you have pulled; adjust.
+providers:
+  ollama:
+    kind: openai_compatible
+    base_url: http://localhost:11434/v1
+    api_key_env: null
+
+models:
+  qwen3-32b:
+    provider: ollama
+    model_name: qwen3:32b
+    display_name: Qwen3 32B
+    context_window: 131072
+    max_output_tokens: 16384
+    capabilities: [json_schema]
+  llama-3.3-70b:
+    provider: ollama
+    model_name: llama3.3:70b
+    display_name: Llama 3.3 70B
+    context_window: 131072
+    max_output_tokens: 16384
+    capabilities: [json_schema]
+
+input_budget_fraction: 0.7
+
+stages:
+  pr_summary:
+    candidates: [qwen3-32b]
+    effort: high
+    reserved_output_tokens: 8000
+  aggregate:
+    candidates: [llama-3.3-70b]
+    effort: high
+    reserved_output_tokens: 8000
+  verify:
+    candidates: [llama-3.3-70b, qwen3-32b]
+    effort: high
+    reserved_output_tokens: 4000
+    producer_independence: model

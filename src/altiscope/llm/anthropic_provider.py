@@ -1,7 +1,12 @@
-"""Anthropic adapter. Structured output via messages.parse; adaptive thinking; effort."""
+"""Anthropic adapter: native structured output, adaptive thinking, effort levels.
+
+Also the adapter for Claude on Bedrock, Vertex and Foundry once those client classes are
+wired in (roadmap); the request surface is the same.
+"""
 
 from __future__ import annotations
 
+import os
 import time
 from typing import TypeVar
 
@@ -9,22 +14,29 @@ import anthropic
 from pydantic import BaseModel
 
 from altiscope.llm.provider import GenerationResult, Usage
+from altiscope.llm.registry import ModelSpec, ProviderSpec
+from altiscope.llm.tokens import estimate_tokens
 from altiscope.llm.types import Effort
 
 T = TypeVar("T", bound=BaseModel)
 
 
 class AnthropicProvider:
-    name = "anthropic"
-
-    def __init__(self, client: anthropic.Anthropic | None = None) -> None:
-        # Zero-arg client resolves ANTHROPIC_API_KEY / auth profile from the environment.
-        self._client = client or anthropic.Anthropic()
+    def __init__(self, spec: ProviderSpec, client: anthropic.Anthropic | None = None) -> None:
+        self.name = spec.name
+        if client is not None:
+            self._client = client
+            return
+        api_key = os.environ.get(spec.api_key_env) if spec.api_key_env else None
+        # With api_key=None the SDK resolves ANTHROPIC_API_KEY or an auth profile itself.
+        self._client = anthropic.Anthropic(
+            api_key=api_key, base_url=spec.base_url, timeout=spec.timeout_seconds
+        )
 
     def generate_structured(
         self,
         *,
-        model_id: str,
+        model: ModelSpec,
         system: str,
         user: str,
         output_type: type[T],
@@ -33,7 +45,7 @@ class AnthropicProvider:
     ) -> GenerationResult[T]:
         started = time.monotonic()
         response = self._client.messages.parse(
-            model=model_id,
+            model=model.wire_name,
             max_tokens=max_tokens,
             # The system prompt is stable per prompt version; cache it. The user turn
             # (the PR material) varies per call and follows the breakpoint.
@@ -66,13 +78,16 @@ class AnthropicProvider:
             stop_reason=response.stop_reason or "unknown",
             usage=usage,
             latency_ms=latency_ms,
+            output_mode="native",
             provider_request_id=response._request_id,  # pyright: ignore[reportPrivateUsage]
             refusal_category=refusal_category,
         )
 
-    def count_tokens(self, *, model_id: str, system: str, user: str) -> int:
+    def count_tokens(self, *, model: ModelSpec, system: str, user: str) -> int:
+        if "token_counting" not in model.capabilities:
+            return estimate_tokens(system) + estimate_tokens(user)
         result = self._client.messages.count_tokens(
-            model=model_id,
+            model=model.wire_name,
             system=system,
             messages=[{"role": "user", "content": user}],
         )

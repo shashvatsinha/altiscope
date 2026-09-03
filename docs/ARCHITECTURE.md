@@ -165,21 +165,50 @@ comparison views are rendered side by side from each person's own aggregate and
 facts; the model is not asked to compare people. See ADR-0007 and the open question in
 §10.
 
-## 6. Model routing
+## 6. Model routing and provider neutrality
 
-`config/models.yaml` is the registry: models with provider, context window, output
-limit, and cost; and per-stage routing with a default, an ordered list of candidates,
-and an effort level. The router (`altiscope.llm.router`) picks the first candidate whose
-usable context fits the input plus reserved output, and returns a `RoutingDecision`
-with a human-readable `reason` ("default for stage", "input 410k tokens exceeds
-claude-haiku-4-5 200k; escalated to claude-opus-5"). The decision, model id, provider,
-prompt version, effort, token counts, latency and request id are stored on `llm_calls`
-and referenced by every summary. Verification can require a model different from the
-producer.
+Altiscope must work with any model: Claude, GPT, Gemini, or an open-source model on
+Ollama, vLLM, llama.cpp or LM Studio. Enterprises mandate providers; some forbid any
+model outside their network. The registry (`config/models.yaml`) makes this a config
+change, in three parts:
 
-Providers implement one small protocol (`generate_structured`, `count_tokens`). The
-Anthropic adapter is first. OpenAI-compatible, Bedrock, Vertex and Foundry adapters are
-expected; enterprises frequently mandate one. See ADR-0005.
+- **Providers are endpoints, not vendors.** A provider entry has a `kind` (the adapter),
+  a base URL and the name of the environment variable holding its key. One
+  `openai_compatible` adapter covers OpenAI, Azure OpenAI, Ollama, vLLM, llama.cpp,
+  LM Studio, Groq, Together, OpenRouter and any other server speaking the
+  chat-completions protocol. The same kind can be declared several times for different
+  endpoints. A native `anthropic` adapter exists because its structured output, caching
+  and effort controls are worth using directly; Bedrock, Vertex and Foundry are the same
+  adapter with a different client. A Gemini adapter is a later addition of the same shape.
+- **Models declare capabilities.** `json_schema` (server-enforced schema),
+  `json_mode` (valid JSON, schema prompted), `reasoning_effort`, `token_counting`.
+  The adapter picks the strongest structured-output mode the model supports and falls
+  back through `native → json_mode → prompt`. The mode used is recorded on the call.
+  Whatever the mode, the pipeline validates the output against the PR snapshot
+  (§4), so a weaker model is slower to converge, not unsafe.
+- **Stages route by fit and preference.** Each stage lists candidates in order, an
+  effort level, and reserved output tokens. The router (`altiscope.llm.router`) returns
+  the first candidate whose usable context fits the input, with a plain-language
+  `reason` ("default for stage", "input 410k tokens exceeds claude-haiku-4-5 200k;
+  escalated to claude-opus-5"). The decision, model id, provider, prompt version, effort,
+  output mode, token counts, latency and request id are stored on `llm_calls` and
+  referenced by every summary.
+
+Verification declares `producer_independence`: `model` skips the model that wrote the
+claim; `provider` skips its whole provider. Cross-vendor verification (Claude writes, a
+self-hosted Qwen checks, or the reverse) is the strongest independence signal the system
+can offer and is cheap to configure. `config/examples/` has OpenAI-only, Ollama-only,
+and mixed layouts.
+
+Being pluggable is not being trusted. Small open-source models produce more invalid
+evidence pointers and more subtle misreadings that pointer validation cannot catch. A
+model earns a place as a stage default by its results on the golden set (§7), which is
+also how a cheaper model is shown to be adequate for a stage. The registry records cost
+for reporting, never for routing, precisely so that this trade is made with evidence.
+
+Providers implement one small protocol (`generate_structured`, `count_tokens`). Token
+counting is exact where the model has an endpoint and a deliberate overestimate where it
+does not; routing errs toward smaller inputs. See ADR-0005.
 
 ## 7. Verification and feedback
 
