@@ -1,0 +1,44 @@
+# Working on Altiscope
+
+Read `docs/ARCHITECTURE.md` before changing anything substantive. The ADRs in
+`docs/adr/` record why things are the way they are; do not silently reverse one. If a
+change needs a decision reversed, add a superseding ADR in the same PR.
+
+## Ground rules that come from the product, not from taste
+
+- Accuracy over breadth. A feature that could cause a summary to say something the
+  source does not support is not a feature.
+- The model never produces numbers; code computes facts. The model never emits database
+  ids; it emits per-call opaque tokens the system maps back and validates.
+- Every claim has evidence rows. Every aggregate claim has source rows. Validation of
+  those pointers happens before storage, not in the UI.
+- No evaluative language about people in any prompt or template.
+- Prompts are versioned files under `prompts/`. Never edit one that has produced
+  published output; add a new version.
+- Nothing is pre-computed on a calendar. Aggregates are on-demand and cached by input
+  set.
+
+## Toolchain
+
+- `uv sync --extra dev`, then `uv run ruff check .`, `uv run ruff format .`,
+  `uv run pyright`, `uv run pytest`. CI runs all four plus integration tests against
+  Postgres; keep them green.
+- pyright is in strict mode. Do not loosen it; annotate.
+- Schema changes are a new numbered file in `migrations/`. Never edit an applied one.
+- Anthropic SDK usage: structured output via `client.messages.parse(..., output_format=Model)`;
+  adaptive thinking; `output_config={"effort": ...}`; check `stop_reason` for `refusal`.
+  Model ids are as in `config/models.yaml`, without date suffixes.
+
+## Where things are
+
+- `src/altiscope/schemas/`: the LLM output contracts. Change them only with a
+  `schema_version` bump.
+- `src/altiscope/llm/router.py`: routing decision and its recorded reason.
+- `src/altiscope/ingest/diff_policy.py`: what the model is and is not shown, and why.
+- `src/altiscope/aggregate/planner.py`: the query-time reduction tree.
+- `src/altiscope/aggregate/coverage.py`: cited vs. uncited inputs.
+- `migrations/0001_initial.sql`: the provenance contract.
+
+## Roadmap
+
+`docs/ROADMAP.md` is ordered. Pick the top unfinished item unless told otherwise.

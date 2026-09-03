@@ -1,0 +1,55 @@
+# Altiscope model registry.
+#
+# Model choice is a runtime routing decision (design principle 5). This file declares
+# the models that may be used and how each pipeline stage picks one. Every LLM call
+# records which rule fired and why, so outputs from different models can be compared on
+# real PRs later (principle 6).
+#
+# Context windows and prices are as published by the provider at the time of writing;
+# keep them current. Prices are USD per million tokens and are used for reporting only,
+# never for routing.
+
+models:
+  claude-opus-5:
+    provider: anthropic
+    display_name: Claude Opus 5
+    context_window: 1000000
+    max_output_tokens: 128000
+    input_usd_per_mtok: 5.00
+    output_usd_per_mtok: 25.00
+  claude-sonnet-5:
+    provider: anthropic
+    display_name: Claude Sonnet 5
+    context_window: 1000000
+    max_output_tokens: 128000
+    input_usd_per_mtok: 2.00
+    output_usd_per_mtok: 10.00
+  claude-haiku-4-5:
+    provider: anthropic
+    display_name: Claude Haiku 4.5
+    context_window: 200000
+    max_output_tokens: 64000
+    input_usd_per_mtok: 1.00
+    output_usd_per_mtok: 5.00
+
+# Fraction of a model's context window the router is willing to fill with input.
+# The remainder is headroom for the system prompt, schema, and output.
+input_budget_fraction: 0.75
+
+stages:
+  # Reads one PR in full and emits structured claims with evidence.
+  pr_summary:
+    candidates: [claude-opus-5]
+    effort: high
+    reserved_output_tokens: 16000
+  # Synthesizes many atomic summaries (or child aggregates) into one narrative.
+  aggregate:
+    candidates: [claude-opus-5]
+    effort: high
+    reserved_output_tokens: 16000
+  # Checks one claim against its cited evidence. Must not be the model that wrote it.
+  verify:
+    candidates: [claude-sonnet-5, claude-opus-5]
+    effort: high
+    reserved_output_tokens: 4000
+    must_differ_from_producer: true

@@ -1,0 +1,32 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: altiscope
+          POSTGRES_PASSWORD: altiscope
+          POSTGRES_DB: altiscope
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U altiscope" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+    env:
+      ALTISCOPE_DATABASE_URL: postgresql://altiscope:altiscope@localhost:5432/altiscope
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --extra dev
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pyright
+      - run: uv run pytest
+      - run: uv run altiscope db migrate
+      - run: uv run pytest -m integration
