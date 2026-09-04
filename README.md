@@ -1,115 +1,170 @@
 # Altiscope
 
-Altitude-appropriate visibility into engineering work, sourced from GitHub pull requests,
-with structured provenance for every claim.
+Altiscope constructs organizational views of engineering work from pull requests, where
+every statement remains connected to the evidence that produced it. It is an evidence and
+provenance architecture in which language models perform bounded interpretation steps,
+not a summarizer with citations attached.
 
-**Status: design stage.** The architecture, data model, model-routing registry and the
-pure-logic core (diff policy, routing, claim validation, aggregation planning) exist and
-are tested. Ingestion, the LLM pipeline end to end, and the UI are not built yet. Read
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) first; it is the proposal this repository
-is built against, and it ends with the open questions that still need an owner's answer.
+**Status: design and foundation stage.** The data model and the deterministic core are
+implemented and tested; GitHub ingestion, the end-to-end model pipeline, verification and
+the UI are not built. [Status](#status) below has the specifics.
 
 ## The problem
 
-Engineering organizations are hierarchical. Individual contributors and leads do the
-work; each layer above exists partly to compress what happened into the right level of
-detail for the next layer. That compression is manual, slow, inconsistent, and
-unverifiable. When it is wrong, it is wrong with authority.
+Engineering organizations record their work in unusual detail. Pull requests carry the
+change, the reasoning behind it, and the discussion of whether it was right, all
+timestamped and available through an API.
 
-## What Altiscope does
+Very little of that record survives the trip to the people who make decisions about it.
+An engineer knows what their pull requests did; their lead knows roughly what the team
+did; a director knows what someone told them, after two rounds of summarization performed
+by people with incomplete visibility and limited time. Each retelling loses information,
+and the connection back to the underlying evidence is gone — so nobody downstream can
+check anything, and a mistake acquires authority as it travels.
 
-1. Ingests merged pull requests from GitHub (a GitHub App for organizations, a token for
-   evaluation), storing an immutable snapshot of description, full diff, review threads
-   and commits.
-2. Summarizes each PR once with an LLM into **typed claims with evidence pointers**, plus
-   facts computed in code, plus an explicit list of what the model was not shown.
-3. On demand, for any people/teams/repositories over any date range at any reader
-   altitude, composes those atomic summaries into a narrative whose every claim cites the
-   source claims behind it, as rows in a table, not as prose.
-4. Reports **coverage**: which PRs in the window the narrative cited and which it did
-   not, so selective emphasis is visible.
-5. Lets readers verify any claim against its source and flag misrepresentation. Flags
-   feed a regression set that gates prompt and model changes.
+Engineering metrics do not close this gap, and not because they are bad. Cycle time,
+throughput and change failure rate answer a question about quantity. "What materially
+changed, and why does it matter?" is a question about content, and the information needed
+to answer it lives in diffs and review threads rather than in counts. Both are useful;
+they are not substitutes.
 
-The name is a double meaning: altitude (the right level of detail for who is reading) and
-scope (an instrument for close examination). A plausible later direction is
-quality, security and compliance checks against engineering standards. That is not built,
-and the data model is chosen so it would not require a rewrite.
+## The idea
 
-## Design principles
-
-1. The **pull request**, not the commit, is the atomic unit of work.
-2. Each PR is **summarized once** and cached until the prompt, schema or model changes.
-3. Every higher-level view is **generated at query time** from atomic summaries in the
-   window. No pre-computed rollups; the date range is free.
-4. **Provenance is structured data.** Every claim traces to specific PRs through foreign
-   keys. Drill from "the team shipped X this quarter" to the hunk.
-5. **Model choice is a routing decision** driven by a config registry, not a hardcoded
-   dependency.
-6. Every summary records **which model produced it and why** it was routed there.
-7. **Accuracy over breadth.** A wrong summary reaching a manager's manager is worse than
-   none. The system must be self-testable by the teams it describes.
-
-And one thing not to do: no retrieval or embedding search to squeeze a PR into a small
-window. A PR is bounded; it is read whole.
-
-## Technology decisions
-
-Each of these has a fuller record in [`docs/adr/`](docs/adr/).
-
-| Choice | Why, briefly |
-|---|---|
-| **Python 3.11+, pyright strict, pydantic v2** | The hard problems are prompt design, structured-output validation and evaluation, where Python's LLM tooling is strongest. Strict typing and pydantic at every model boundary keep it honest. Go's deployment story and TypeScript's UI story were both considered and judged to optimize the wrong part of this system. |
-| **Postgres only, hand-written SQL migrations** | The schema is the provenance contract and should be readable as SQL. `CHECK` constraints enforce that every claim source points at exactly one real row. Supporting SQLite too would mean a second dialect to verify every provenance query against. |
-| **GitHub App for ingestion, polling first, webhooks later** | Least-privilege, short-lived tokens, GHES-compatible, and an identity a security team can approve. Polling always works; webhooks are a freshness optimization that never replaces reconciliation. |
-| **Snapshots stored, summaries computed from snapshots** | Reproducible summaries with evidence pointers that stay valid regardless of what happens to the repository later. |
-| **Any model, via a YAML registry and two adapters** | Enterprises mandate providers, and some allow nothing outside their network. A native Anthropic adapter plus one chat-completions adapter cover Claude, GPT, Azure, and open-source models on Ollama, vLLM, llama.cpp or LM Studio; providers are endpoints, declared as many times as needed. Models declare capabilities and the adapter falls back from schema-enforced to prompted JSON; validation against the snapshot is the guarantee either way. Routing by fit with a recorded reason gives empirical model comparison on real output. A multi-provider abstraction library was rejected for its uneven structured-output support. |
-| **Second-model verification, default on** | Roughly doubles per-PR cost, once. It is the cheapest strong signal available for the property the system exists to provide. |
-| **Query-time reduction tree for large windows** | Honors "no pre-computed rollups" while fitting in a context window. Intermediates are stored with their own provenance so drill-down works at every level. |
-| **Postgres-backed job queue** | PRs merge at human pace. A second queue system is not justified by the throughput. |
-| **Server-rendered UI (FastAPI + templates) for v1** | Keeps one language while the hard problems are solved; the JSON API is the contract a richer front end can consume later. The most reversible decision in the list. |
-
-## Layout
+Start from engineering artifacts, initially GitHub pull requests. Store the source
+material. Compute the numbers in code. Use a model for reading a change and describing
+what it does, and require that description to take the form of typed claims, each
+pointing at specific evidence in the stored material. Check those pointers. Then compose
+the claims, on demand, into views at whatever level of abstraction the reader needs,
+keeping the path from any sentence back toward its evidence intact.
 
 ```
-config/models.yaml        model registry and per-stage routing
-prompts/<stage>/vN.md     versioned prompts; hash recorded on every call
-migrations/*.sql          schema, applied in order
-src/altiscope/
-  schemas/                pydantic models for summaries, claims, evidence, aggregates
-  llm/                    registry, router, provider protocol, Anthropic adapter
-  ingest/                 GitHub client interface, snapshot types, diff policy
-  summarize/              facts, prompt assembly, output validation
-  aggregate/              window planning (reduction tree), coverage, validation
-  store/                  database access and migration runner
-  cli/                    `altiscope` command
-docs/ARCHITECTURE.md      the proposal
-docs/adr/                 decision records
-docs/ROADMAP.md           what comes next, in order
+merged PR ──▶ stored snapshot ──▶ computed facts + filtered diff
+                                            │
+                                            ▼
+                             claims with evidence pointers  (model)
+                                            │
+                              validation ──▶ verification  (deterministic, then model)
+                                            │
+                                            ▼
+              query {who, when, altitude} ──▶ synthesis  (model, on demand)
+                                            │
+                                  provenance + coverage ──▶ reader ──▶ flags
 ```
 
-## Getting started (development)
+Models interpret and synthesize inside that chain. They do not contribute numbers,
+database identifiers, or authority.
 
-Requires Python 3.11+, [uv](https://docs.astral.sh/uv/), and Docker (for Postgres).
+## Why this may be tractable now
+
+Reading a diff and saying what it means used to require an engineer, which made the cost
+of interpretation scale with the volume of work. That is why organizations push the task
+down to whoever is closest to it and absorb the losses from each retelling.
+
+Current models change that economics: one can read a complete pull request and produce a
+usable account of it, and long contexts mean a bounded artifact can be read whole rather
+than sampled. This is a real change in feasibility, and it is not sufficient on its own.
+A model that emits prose replaces an unauditable human summary with an unauditable
+machine one, produced fluently enough to disguise the problem.
+
+Three ideas do the work of making model output inspectable rather than authoritative.
+
+**Provenance** records what each claim rests on, as rows and foreign keys rather than
+text. It does not establish that a claim is correct; it makes the basis of the claim
+available, which is what allows anything else to evaluate it.
+
+**Verification** distinguishes two different checks. Structural validation is
+deterministic: does this file exist in the snapshot, is this quoted span really in the
+description, is this comment one the model was shown. Semantic verification asks a
+different model whether the cited evidence actually supports the claim — because a
+citation can point at real code and still misread it.
+
+**Coverage** is not the same as provenance, and the difference matters more than it first
+appears. Provenance asks what supports this statement. Coverage asks how much of the work
+in scope contributed to this view. A quarterly summary can consist entirely of
+well-evidenced claims and still mislead, because it wrote about the two interesting pull
+requests and skipped the other forty. Every sentence survives scrutiny; the omission is
+invisible. Altiscope records the full input set for every view and reports which inputs
+no claim cited, next to the narrative.
+
+## Reader altitude
+
+The same evidence base should support different levels of synthesis, chosen when the
+question is asked: an engineer wants technical specifics, a lead wants workstreams, a
+manager wants their state, a director wants themes across teams, an executive wants a few
+statements each resting on a large share of the work. Today these are written by
+different people at different times from different partial knowledge, which is why they
+routinely disagree. Higher altitude should mean more synthesis over the same facts — not
+a different factual universe, and not weaker grounding.
+
+## Design in brief
+
+- The merged pull request is the atomic unit: bounded, semantically rich, already
+  reviewed, and a one-time event that makes a natural cache key.
+- Source material is snapshotted before interpretation, so summaries are reproducible and
+  evidence pointers stay valid regardless of what happens to the repository later.
+- Facts are computed in code and kept separate from model interpretation, so a summary
+  cannot misquote a number.
+- Interpretation is structured: typed claims carrying evidence pointers, validated before
+  storage.
+- Views are composed at query time over any subjects and any date range. There are no
+  scheduled rollups, so no reporting calendar is imposed on the reader, and provenance is
+  preserved through every intermediate level of synthesis.
+- Model choice is configuration, recorded on every call with the reason it was routed
+  there.
+- The system describes engineering work. It is not designed to evaluate employees;
+  [THESIS.md](THESIS.md) explains why pull request evidence is a poor basis for that.
+
+## Status
+
+This is a design-stage project with a tested foundation, not a working system.
+
+Implemented and tested: the Postgres schema and migration runner; the diff policy; fact
+computation; prompt assembly and the opaque-token scheme that keeps database identifiers
+away from the model; structural validation of evidence pointers; aggregate source
+validation and coverage; the reduction-tree planner for windows that exceed a model's
+context; the model registry and router; adapters for the Anthropic API and for any
+endpoint speaking the chat-completions protocol; versioned prompts with content hashes.
+
+Not built: the GitHub client (the interface exists, no implementation does); the write
+path into the snapshot tables; the orchestration that calls a model and stores a summary;
+the verification stage; query resolution and aggregate caching; the job worker; the API,
+the UI, and authentication. There is no golden set and no evaluation loop, so no claim in
+this repository about output quality has been tested.
+
+[`docs/ROADMAP.md`](docs/ROADMAP.md) is ordered, and the open questions in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) should be settled before much of it is
+built at scale.
+
+## Learn more
+
+- [THESIS.md](THESIS.md) — why the approach may work, the distinctions it depends on, and
+  the hypotheses it rests on. It takes up Dorsey and Botha's
+  [*From Hierarchy to Intelligence*](https://block.xyz/inside/from-hierarchy-to-intelligence)
+  on hierarchy as an information-routing mechanism, and why Altiscope is a much narrower
+  exploration of one implication of it.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — the proposed implementation: pipeline
+  stages, schema, validation, routing, aggregation, failure modes, open questions.
+- [`docs/adr/`](docs/adr/) — individual decisions and the alternatives rejected.
+
+## Development
+
+Requires Python 3.11+, [uv](https://docs.astral.sh/uv/), and Docker for Postgres.
 
 ```bash
 uv sync --extra dev
 docker compose up -d db
-cp .env.example .env            # fill in what you have
+cp .env.example .env
 uv run altiscope db migrate
-uv run altiscope models list    # show providers, models, routing
-# Other layouts: ALTISCOPE_MODELS_CONFIG=config/examples/ollama.yaml (fully local)
+uv run altiscope models list                    # providers, models, per-stage routing
 uv run altiscope models route pr_summary --input-tokens 120000
 uv run pytest
 ```
 
-There is no end-to-end pipeline yet. See the roadmap.
+`ALTISCOPE_MODELS_CONFIG=config/examples/ollama.yaml` switches to a fully local layout;
+`config/examples/` also has OpenAI-only and mixed-vendor registries.
 
-## Contributing
-
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). Design discussion happens in ADRs; if you
-disagree with a decision, open a PR that adds a superseding ADR rather than editing the
-old one.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). To change a decision, add a superseding ADR
+rather than editing the existing one.
 
 ## License
 
