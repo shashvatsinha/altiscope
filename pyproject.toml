@@ -1,0 +1,78 @@
+[project]
+name = "altiscope"
+version = "0.0.1"
+description = "Altitude-appropriate visibility into engineering work, sourced from GitHub pull requests, with structured provenance for every claim."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+authors = [{ name = "Shashvat Sinha" }]
+keywords = ["github", "engineering-management", "llm", "summarization", "provenance"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development",
+]
+dependencies = [
+  "anthropic>=1.3,<2",
+  "pydantic>=2.11,<3",
+  "pydantic-settings>=2.6,<3",
+  "pyyaml>=6.0",
+  "typer>=0.15",
+  "httpx>=0.27",
+  "psycopg[binary,pool]>=3.2",
+  "structlog>=24.4",
+  "openai>=1.50,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "pytest-cov>=6.0",
+  "ruff>=0.8",
+  "pyright>=1.1.390",
+  "types-PyYAML",
+]
+
+[project.scripts]
+altiscope = "altiscope.cli.main:app"
+
+[project.urls]
+Homepage = "https://github.com/shashvatsinha/altiscope"
+Issues = "https://github.com/shashvatsinha/altiscope/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/altiscope"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF", "ANN", "PL"]
+ignore = ["ANN401", "PLR2004", "PLR0913", "PLR0911", "RUF012"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN", "PLR", "PLC0415"]
+"src/altiscope/cli/**" = ["PLC0415"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.11"
+typeCheckingMode = "strict"
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = ["integration: requires Postgres and/or network"]

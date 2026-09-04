@@ -1,0 +1,176 @@
+"""Adapter for any server speaking the OpenAI chat-completions protocol.
+
+Covers OpenAI and Azure OpenAI, and the open-source serving stacks: Ollama, vLLM,
+llama.cpp, LM Studio, TGI, plus hosted gateways (Groq, Together, OpenRouter, ...).
+
+Structured output is obtained by the best mode the model declares:
+
+* native   - `response_format` with a JSON schema (OpenAI structured outputs, vLLM and
+             Ollama guided decoding). The server guarantees shape.
+* json_mode - `response_format: json_object`; the schema is prompted, the server only
+             guarantees syntax. We validate.
+* prompt   - nothing enforced; the schema is prompted, fences are stripped, we validate.
+
+An output that fails validation is returned with stop_reason `invalid_output`; the
+pipeline's single constrained retry handles it.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import time
+from typing import Any, TypeVar
+
+import httpx
+import openai
+from pydantic import BaseModel, ValidationError
+
+from altiscope.llm.provider import GenerationResult, Usage
+from altiscope.llm.registry import ModelSpec, ProviderSpec
+from altiscope.llm.tokens import estimate_tokens
+from altiscope.llm.types import Effort
+
+T = TypeVar("T", bound=BaseModel)
+
+_FENCE_RE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.DOTALL)
+
+_FINISH_TO_STOP: dict[str, str] = {
+    "stop": "end_turn",
+    "length": "max_tokens",
+    "content_filter": "refusal",
+}
+
+# Providers on this protocol take three levels; Altiscope's upper levels collapse to high.
+_EFFORT_MAP: dict[Effort, str] = {
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+    "xhigh": "high",
+    "max": "high",
+}
+
+
+def _strip_fences(text: str) -> str:
+    match = _FENCE_RE.match(text)
+    return match.group(1) if match else text.strip()
+
+
+def _schema_instruction(output_type: type[BaseModel]) -> str:
+    schema = json.dumps(output_type.model_json_schema(), indent=None, sort_keys=True)
+    return (
+        "\n\nRespond with a single JSON object and nothing else. It must conform to this "
+        f"JSON schema:\n{schema}"
+    )
+
+
+class OpenAICompatibleProvider:
+    def __init__(
+        self,
+        spec: ProviderSpec,
+        client: openai.OpenAI | None = None,
+        http_client: httpx.Client | None = None,
+    ) -> None:
+        self.name = spec.name
+        if client is not None:
+            self._client = client
+            return
+        api_key = os.environ.get(spec.api_key_env) if spec.api_key_env else None
+        self._client = openai.OpenAI(
+            # Local servers need no key but the SDK insists on a string.
+            api_key=api_key or "not-needed",
+            base_url=spec.base_url,
+            timeout=spec.timeout_seconds,
+            http_client=http_client,
+        )
+
+    def generate_structured(
+        self,
+        *,
+        model: ModelSpec,
+        system: str,
+        user: str,
+        output_type: type[T],
+        max_tokens: int,
+        effort: Effort,
+    ) -> GenerationResult[T]:
+        mode = model.structured_output_mode
+        kwargs: dict[str, Any] = {}
+        if "reasoning_effort" in model.capabilities:
+            kwargs["reasoning_effort"] = _EFFORT_MAP[effort]
+            # OpenAI reasoning models reject max_tokens in favour of this parameter.
+            kwargs["max_completion_tokens"] = max_tokens
+        else:
+            kwargs["max_tokens"] = max_tokens
+
+        started = time.monotonic()
+        if mode == "native":
+            completion = self._client.chat.completions.parse(
+                model=model.wire_name,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                response_format=output_type,
+                **kwargs,
+            )
+            choice = completion.choices[0]
+            parsed: T | None = choice.message.parsed
+            raw_text = choice.message.content or ""
+            validation_error: str | None = None
+        else:
+            if mode == "json_mode":
+                kwargs["response_format"] = {"type": "json_object"}
+            completion = self._client.chat.completions.create(
+                model=model.wire_name,
+                messages=[
+                    {"role": "system", "content": system + _schema_instruction(output_type)},
+                    {"role": "user", "content": user},
+                ],
+                **kwargs,
+            )
+            choice = completion.choices[0]
+            raw_text = choice.message.content or ""
+            parsed, validation_error = None, None
+            try:
+                parsed = output_type.model_validate_json(_strip_fences(raw_text))
+            except ValidationError as exc:
+                validation_error = str(exc)
+        latency_ms = int((time.monotonic() - started) * 1000)
+
+        stop_reason = _FINISH_TO_STOP.get(choice.finish_reason or "", "unknown")
+        refusal = getattr(choice.message, "refusal", None)
+        if refusal:
+            stop_reason = "refusal"
+        if stop_reason == "end_turn" and parsed is None:
+            stop_reason = "invalid_output"
+        if stop_reason != "end_turn":
+            parsed = None
+
+        usage_obj = completion.usage
+        cached = 0
+        if usage_obj is not None and usage_obj.prompt_tokens_details is not None:
+            cached = usage_obj.prompt_tokens_details.cached_tokens or 0
+        usage = Usage(
+            input_tokens=usage_obj.prompt_tokens if usage_obj else 0,
+            output_tokens=usage_obj.completion_tokens if usage_obj else 0,
+            cache_read_tokens=cached,
+        )
+        return GenerationResult(
+            parsed=parsed,
+            raw_text=raw_text,
+            model_id=completion.model or model.wire_name,
+            stop_reason=stop_reason,
+            usage=usage,
+            latency_ms=latency_ms,
+            output_mode=mode,
+            provider_request_id=getattr(completion, "_request_id", None),
+            refusal_category="content_filter" if stop_reason == "refusal" else None,
+            validation_error=validation_error,
+        )
+
+    def count_tokens(self, *, model: ModelSpec, system: str, user: str) -> int:
+        # The chat-completions protocol has no portable token-count endpoint, and a
+        # tokenizer for one model is wrong for another. Plan with the overestimate.
+        return estimate_tokens(system) + estimate_tokens(user)

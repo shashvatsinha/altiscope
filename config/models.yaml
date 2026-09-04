@@ -1,0 +1,85 @@
+# Altiscope model registry.
+#
+# Model choice is a runtime routing decision (design principle 5). This file declares
+# the providers Altiscope may call, the models available on them, and how each pipeline
+# stage picks one. Every LLM call records which rule fired and why, so outputs from
+# different models can be compared on real PRs later (principle 6).
+#
+# Any model works if a provider can reach it: Claude, GPT, Gemini behind a compatible
+# gateway, or an open-source model on Ollama, vLLM, llama.cpp or LM Studio. See
+# config/examples/ for ready-made layouts. Being pluggable is not being trusted: a
+# model earns a place as a stage default by doing well on the golden set (docs/ROADMAP.md
+# item 5), not by being listed here.
+#
+# Context windows and prices are as published by the provider at the time of writing;
+# keep them current. Prices are USD per million tokens and are used for reporting only,
+# never for routing.
+
+providers:
+  # A provider is an endpoint, not a vendor. Declare the same kind more than once for
+  # different endpoints (a local Ollama and a shared vLLM cluster, say).
+  anthropic:
+    kind: anthropic
+    api_key_env: ANTHROPIC_API_KEY
+  ollama:
+    kind: openai_compatible
+    base_url: http://localhost:11434/v1
+    api_key_env: null          # local, unauthenticated
+
+models:
+  claude-opus-5:
+    provider: anthropic
+    display_name: Claude Opus 5
+    context_window: 1000000
+    max_output_tokens: 128000
+    input_usd_per_mtok: 5.00
+    output_usd_per_mtok: 25.00
+    capabilities: [json_schema, reasoning_effort, token_counting]
+  claude-sonnet-5:
+    provider: anthropic
+    display_name: Claude Sonnet 5
+    context_window: 1000000
+    max_output_tokens: 128000
+    input_usd_per_mtok: 2.00
+    output_usd_per_mtok: 10.00
+    capabilities: [json_schema, reasoning_effort, token_counting]
+  claude-haiku-4-5:
+    provider: anthropic
+    display_name: Claude Haiku 4.5
+    context_window: 200000
+    max_output_tokens: 64000
+    input_usd_per_mtok: 1.00
+    output_usd_per_mtok: 5.00
+    capabilities: [json_schema, token_counting]
+  # An open-source model served locally. Not a default candidate; available to route to.
+  # Verify the model name and context length against your Ollama install.
+  llama-3.3-70b:
+    provider: ollama
+    model_name: llama3.3:70b
+    display_name: Llama 3.3 70B (Ollama)
+    context_window: 131072
+    max_output_tokens: 16384
+    capabilities: [json_schema]
+
+# Fraction of a model's context window the router is willing to fill with input.
+# The remainder is headroom for the system prompt, schema, and output.
+input_budget_fraction: 0.75
+
+stages:
+  # Reads one PR in full and emits structured claims with evidence.
+  pr_summary:
+    candidates: [claude-opus-5]
+    effort: high
+    reserved_output_tokens: 16000
+  # Synthesizes many atomic summaries (or child aggregates) into one narrative.
+  aggregate:
+    candidates: [claude-opus-5]
+    effort: high
+    reserved_output_tokens: 16000
+  # Checks one claim against its cited evidence. Independence from the producer is the
+  # point: "model" skips the producing model, "provider" skips its whole provider.
+  verify:
+    candidates: [claude-sonnet-5, claude-opus-5]
+    effort: high
+    reserved_output_tokens: 4000
+    producer_independence: model
