@@ -4,9 +4,9 @@ import os
 from pathlib import Path
 
 import pytest
-from tests.conftest import REPO_ROOT
 
 from altiscope.store.migrate import discover
+from tests.conftest import REPO_ROOT
 
 pytestmark = pytest.mark.integration
 
