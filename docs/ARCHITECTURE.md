@@ -1,287 +1,191 @@
-# Altiscope architecture
+# Architecture
 
-Status: **proposal, v0.** Nothing here has been validated against real usage yet.
-This document is the thing to argue with before the implementation grows. Decisions that
-are already firm enough to have a rationale are recorded as ADRs in `docs/adr/`.
+Altiscope would turn GitHub pull requests into accounts of engineering work for different
+readers. A pull request brings together a proposed code change, its explanation, and
+review discussion. This document explains how that material would become a report.
+The [decision records](adr/) provide the engineering rationale.
 
-## 1. What the system is
+## 1. Implementation status
 
-Altiscope reads merged pull requests from GitHub, produces one faithful structured
-summary per PR, and on demand composes those into views for any level of an engineering
-organization over any date range. Every sentence a reader sees can be traced, through
-database rows rather than prose, to the pull requests that justify it.
+The building blocks exist, but they are not yet connected into a working product.
+The workflow described below is the intended design.
 
-Three properties, in priority order:
+| Area | Today |
+|---|---|
+| Storage | Database design and a tool for applying it exist. |
+| Preparing source material | Code for selecting files, calculating facts, and assembling AI input is tested. |
+| Checking references and planning summaries | Implemented and tested as separate functions. |
+| AI connections | Model selection and Anthropic/chat-completions connections exist. Tests do not yet establish real output quality. |
+| Complete workflow | GitHub collection, saving results, second-model review, and report generation remain unbuilt. |
+| Reader experience | Interface, sign-in, permissions, and feedback remain unbuilt. |
+| Evaluation | No human-reviewed test collection or quality-comparison workflow yet. |
 
-1. **Accuracy.** A wrong summary that reaches a director is misinformation with
-   false authority. The system prefers saying less, saying "I could not determine
-   this", and exposing what it did *not* read, over a fluent guess.
-2. **Provenance as data.** Claims and their sources are rows and foreign keys, not
-   footnotes. Anyone can drill from a quarterly narrative to a hunk of a diff.
-3. **Reader-appropriate altitude.** The same underlying facts are presented at the
-   level of detail the reader needs, chosen per query, never pre-computed on a
-   calendar.
+## 2. From source to report
 
-## 2. The pipeline at a glance
+The proposed flow is:
 
-```
-GitHub ──(App / PAT, REST+GraphQL)──▶ ingest ──▶ PR snapshot tables (immutable)
-                                                       │
-                                        deterministic facts + diff policy
-                                                       │
-                                                       ▼
-                                          atomic summarize (LLM, once per PR)
-                                                       │
-                                     structured claims + evidence pointers
-                                                       │
-                                            verify (second model, per claim)
-                                                       │
-                                                       ▼
-   query {subject, window, altitude} ──▶ aggregate (LLM, on demand, reduction tree)
-                                                       │
-                                aggregate claims → sources (pr_claims | child aggregate claims)
-                                                       │
-                                                       ▼
-                                          coverage report + drill-down UI/API
-                                                       │
-                                      human flags → eval set → prompt/model regression
+```text
+Save a code change and its discussion
+                 ↓
+Calculate facts and prepare material
+                 ↓
+Ask AI for statements linked to evidence
+                 ↓
+Check references; request a second opinion
+                 ↓
+Combine statements for the reader's question
+                 ↓
+Show the account and supporting sources
 ```
 
-Two distinct LLM stages, plus an optional third:
+For the [README's billing example](../README.md#what-it-would-look-like), separate changes
+introduce background processing, retries, and duplicate-event checks. Altiscope would
+first describe each change, then combine those descriptions into a manager's account.
+The supporting statements would retain links to their original evidence.
 
-| Stage | Input | Output | Runs |
-|---|---|---|---|
-| `pr_summary` | One PR: description, full filtered diff, review threads, commits, computed facts | `PrSummary` with `Claim[]`, each with `Evidence[]` | Once per merged PR, cached until invalidated |
-| `aggregate` | N `PrSummary` rows (or N child aggregates) + the query | `AggregateSummary` with `AggregateClaim[]`, each citing source claim ids | On demand, per query; result cached by input-set hash |
-| `verify` | One claim + the PR material it cites | verdict: supported / partially / unsupported / cannot_determine | Once per atomic claim (default on); on demand for aggregates |
+There are three AI tasks: describe a change, review a statement, and combine statements.
+Ordinary code handles source preparation, counts, reference checks, and storage.
 
-## 3. Ingestion
+## 3. Saving and preparing the source
 
-**Source of truth is a stored snapshot, not the live API.** Every PR is fetched once at
-merge (plus a reconciliation pass) and written to append-only tables: `pull_requests`,
-`pr_files` (with patch text), `pr_reviews`, `pr_comments`, `pr_commits`. Summaries are
-computed from the snapshot, so a summary is reproducible and its evidence pointers stay
-valid even if GitHub later loses the data or the repo is deleted.
+Altiscope would periodically check GitHub and save copies of pull requests. Notifications
+from GitHub could later speed up updates. An organization would connect through a GitHub
+App; an individual could use a personal access token for evaluation.
 
-**Auth.** A GitHub App installation is the supported path for organizations:
-fine-grained permissions (`pull_requests:read`, `contents:read`, `members:read`),
-short-lived installation tokens, an audit trail on GitHub's side, and it works on
-GitHub Enterprise Server. A personal access token is accepted for single-user evaluation
-and clearly labelled as such. See ADR-0006.
+The first version would summarize merged pull requests—changes accepted into the project.
+Open and abandoned changes would contribute basic facts, such as counts and ages.
+Changes made without a pull request would be outside the initial view.
 
-**Mechanism.** Polling with cursors is the baseline because it always works (no inbound
-network path required). Webhooks (`pull_request.closed` with `merged=true`) are an
-optimization layered on later for freshness; they never replace reconciliation.
+Descriptions and comments can change after merge. Saving a separate version on each
+refresh would preserve what a particular summary actually read. Fetching, saving, and
+selecting the latest version still need implementation.
 
-**What is ingested.** All PRs (open, closed, merged) are recorded so that counts are
-honest, but only *merged* PRs are summarized in v1. See ADR-0003 for the argument and
-the open question about open/abandoned work.
+Existing preparation code filters files using rules for generated content, dependencies,
+unavailable text, and size. It records why each file was excluded and tells the AI what
+it has not read. These rules can exclude meaningful material and need evaluation.
 
-**Diff policy.** The principle is "read the full diff", and the failure mode of that
-principle is a 40,000-line lockfile or a vendored dependency. A deterministic policy
-(`altiscope.ingest.diff_policy`) classifies each file as `included` or `excluded` with a
-reason (`lockfile`, `generated`, `vendored`, `binary`, `minified`, `oversize`). Excluded
-files still contribute to computed facts (counts, additions/deletions) and the exclusion
-list is part of the summary's `input_manifest`, shown to the model *and* to the reader:
-"This summary did not read 3 generated files (12,400 lines)". The model is never
-silently shown a partial PR.
+Counts and timing are calculated in code. The intended interface would display these
+facts directly from stored data, while the AI supplies descriptions. This does not
+prevent an AI-written sentence from repeating a number incorrectly.
 
-## 4. Atomic summaries
+## 4. Claims and validation
 
-The output schema (`altiscope.schemas.pr_summary`) is deliberately not free prose:
+A *claim* is one statement about a change, accompanied by references to supporting
+material. References can identify files, sections of a change, quotations, comments,
+or commits. The existing checks compare them with the saved material. They check
+membership, not meaning; some matching rules also need tightening.
 
-- `headline`: one sentence, what changed.
-- `claims[]`: each an atomic, checkable statement with a `kind`
-  (feature, bugfix, refactor, infra, test, docs, perf, security, dependency, chore)
-  and `evidence[]` pointing at a file path (optionally hunk), a quoted span of the PR
-  description, a review comment id, or a commit sha. A claim with no evidence is
-  rejected at validation time.
-- `description_vs_diff`: discrepancies between what the PR description says and what the
-  diff actually does. PR descriptions are a primary source of drift in
-  human-written status reports; a summarizer that trusts them uncritically inherits it.
-- `uncertainties[]`: things the model could not determine from the material.
-- `narrative`: a short paragraph, for readers, composed only from the claims above.
+The proposed workflow asks the AI to repair invalid references once. If they remain
+invalid, the result stays unpublished for review. That retry and storage workflow is
+not implemented.
 
-Numbers are never the model's job. `facts` (files, additions, deletions, languages,
-test files touched, reviewers, review rounds, time to merge, linked issues) are computed
-in code from the snapshot and stored separately. The model receives them as context.
-The UI renders them from data, so a summary cannot misquote a number.
+A second AI model would judge each claim as supported, partly supported, unsupported,
+or impossible to determine, with an explanation. Its verdict would remain beside the
+claim rather than replace it. The current proposal does not automatically withhold a
+claim because the reviewer disagrees. Separate models can share mistakes, so the benefit
+and cost of this review must be measured.
 
-Validation after generation, before storage: every evidence path must exist in
-`pr_files`; every quoted description span must be a substring of the body; every
-comment id must exist. Failures are repaired with one constrained retry, then the summary
-is stored with status `needs_review` rather than published.
+**A remaining gap:** headlines and paragraphs are generated alongside claims. There is
+no check linking every sentence back to those claims. Removing an invalid claim can
+leave its wording in the paragraph. The publication rules must address this before
+reports reach readers. Existing warnings about evaluative language do not check accuracy.
 
-Cache invalidation: a `pr_summary` row is keyed by `(pr_id, prompt_version_id,
-schema_version, model_id)`. Changing any of these produces a new row; the previous one is
-kept with `is_current = false` so model/prompt quality can be compared on the same PR.
-See principle 2 and ADR-0005.
+## 5. Answering a reader's question
 
-## 5. Aggregation at query time
+Readers would choose people, teams, or repositories, a date range, and a level of detail,
+called *altitude*. Supported levels run from individual contributor to executive.
+The design assigns changes to dates using merge time and to teams using membership at
+that time. A future topic filter, such as reliability, is proposed.
 
-A query is `{subjects, window, altitude, lens}`:
+Reports would be created when requested. If the source fits into one AI call, the system
+can combine it directly. Otherwise, the existing planner divides it into ordered groups,
+plans a summary of each group, and repeats until one report remains. Intermediate
+summaries would be saved so readers could follow a statement through to the original
+change. Larger reports would take longer and introduce more opportunities for distortion.
 
-- `subjects`: one or more people, teams, or repositories. Team membership is temporal
-  (`team_memberships.valid_from/valid_to`), resolved as of each PR's merge date, because
-  "the team's Q2" must not silently include work someone did on their previous team.
-- `window`: any `[start, end)`; nothing is pinned to weeks or quarters.
-- `altitude`: `ic | lead | manager | director | exec`. Altitude controls prompt
-  variant, target length, and how many source claims a single aggregate claim is
-  expected to rest on. It never changes the provenance rules.
-- `lens` (later): themes such as reliability or security, mapping to claim kinds.
+The source checker removes unrecognized references, drops claims with no valid source,
+and fails if no claims survive. A remaining reference still needs to support the full
+claim. Running these planned calls and saving their results remain unfinished.
 
-**Input set.** The atomic summaries whose PRs merged in the window and match the
-subjects. The set is recorded in `aggregate_inputs`, so coverage is a query, not a
-guess.
+An existing coverage calculation counts immediate inputs cited by a summary. At higher
+levels those inputs may themselves be summaries, so the number does not establish how
+much original work the final account represents. Its presentation remains undecided.
 
-**Reduction tree.** Principle 3 forbids pre-computed rollups; it does not forbid
-query-time intermediates. When the input set exceeds the routed model's budget, the
-planner (`altiscope.aggregate.planner`) partitions inputs, produces child aggregates,
-and synthesizes the parent from the children. Each child is a stored aggregate with
-its own claims and sources, so drill-down works at every level:
-parent claim → child claim → pr claim → file/hunk. Partitioning is deterministic
-(by merge time, then by subject) so the same query yields the same tree.
+## 6. Keeping results traceable
 
-**Provenance enforcement.** The model outputs `sources: [claim_id, ...]` per aggregate
-claim; ids are opaque short tokens issued by the system per call, so the model cannot
-invent a plausible-looking id. Any id not in the input set fails validation. An aggregate
-claim with no sources is dropped, and the drop is recorded.
+Postgres stores sources, claims, and their relationships. Database checks ensure that
+referenced records exist. Application checks must also ensure those sources belong to
+the relevant change and are available to the reader.
 
-**Coverage, the defence against selective emphasis.** For every aggregate the system
-computes and stores which input PRs are cited by at least one claim and which are not.
-The uncited list is shown alongside the narrative with each PR's headline and size.
-A reader can see at a glance that "the team shipped the new billing flow" is true and
-that the eleven PRs of migration work went unmentioned. Coverage below a configurable
-threshold marks the aggregate `low_coverage`.
+The design retains older results when source material, AI instructions, or models change.
+A report could be reused when its inputs and generation settings match, provided the
+reader still has access. Reports are requested on demand rather than prepared on a fixed
+weekly or quarterly schedule. Saving and reusing results still need implementation.
 
-**Caching.** An aggregate is cached by hash of (sorted input pr_summary ids, altitude,
-lens, prompt_version, model). Same question, same inputs, same answer. This is a cache
-of an on-demand result, not a scheduled rollup; nothing is computed before it is asked
-for.
+Records of AI calls would identify the model, instructions, usage, cost, and outcome.
+Settings allow retaining full requests and responses or only their identifying hashes.
+Full retention helps investigation but duplicates source code; storage behavior and the
+organizational default remain to be settled.
 
-**Language constraints.** Aggregates describe work, not people. Prompts forbid
-evaluative language about individuals (productive, slow, struggled). Cross-developer
-comparison views are rendered side by side from each person's own aggregate and
-facts; the model is not asked to compare people. See ADR-0007 and the open question in
-§10.
+For implementation details, see the [database definition](../migrations/0001_initial.sql)
+and [provenance decision](adr/0004-provenance-as-rows.md). AI instructions are versioned
+files under `prompts/`; published versions should be preserved.
 
-## 6. Model routing and provider neutrality
+## 7. Choosing AI models
 
-Altiscope must work with any model: Claude, GPT, Gemini, or an open-source model on
-Ollama, vLLM, llama.cpp or LM Studio. Enterprises mandate providers; some forbid any
-model outside their network. The registry (`config/models.yaml`) makes this a config
-change, in three parts:
+The [model configuration](../config/models.yaml) specifies available models and an ordered
+preference for each task. The selection code chooses the first eligible model with room
+for the estimated input. It can avoid the producing model or connection when selecting
+a reviewer, although that does not guarantee independent judgment.
 
-- **Providers are endpoints, not vendors.** A provider entry has a `kind` (the adapter),
-  a base URL and the name of the environment variable holding its key. One
-  `openai_compatible` adapter covers OpenAI, Azure OpenAI, Ollama, vLLM, llama.cpp,
-  LM Studio, Groq, Together, OpenRouter and any other server speaking the
-  chat-completions protocol. The same kind can be declared several times for different
-  endpoints. A native `anthropic` adapter exists because its structured output, caching
-  and effort controls are worth using directly; Bedrock, Vertex and Foundry are the same
-  adapter with a different client. A Gemini adapter is a later addition of the same shape.
-- **Models declare capabilities.** `json_schema` (server-enforced schema),
-  `json_mode` (valid JSON, schema prompted), `reasoning_effort`, `token_counting`.
-  The adapter picks the strongest structured-output mode the model supports and falls
-  back through `native → json_mode → prompt`. The mode used is recorded on the call.
-  Whatever the mode, the pipeline validates the output against the PR snapshot
-  (§4), so a weaker model is slower to converge, not unsafe.
-- **Stages route by fit and preference.** Each stage lists candidates in order, an
-  effort level, and reserved output tokens. The router (`altiscope.llm.router`) returns
-  the first candidate whose usable context fits the input, with a plain-language
-  `reason` ("default for stage", "input 410k tokens exceeds claude-haiku-4-5 200k;
-  escalated to claude-opus-5"). The decision, model id, provider, prompt version, effort,
-  output mode, token counts, latency and request id are stored on `llm_calls` and
-  referenced by every summary.
+The current connections support Anthropic and compatible chat-completions services,
+including suitable internal services. Compatibility depends on the particular service
+and its settings. Input-size estimates can be wrong; the complete workflow must handle
+that. Model selection follows configured preference and capacity, not automatic cost
+optimization. Defaults have not been established through quality evaluations.
 
-Verification declares `producer_independence`: `model` skips the model that wrote the
-claim; `provider` skips its whole provider. Cross-vendor verification (Claude writes, a
-self-hosted Qwen checks, or the reverse) is the strongest independence signal the system
-can offer and is cheap to configure. `config/examples/` has OpenAI-only, Ollama-only,
-and mixed layouts.
+## 8. Running the service and handling feedback
 
-Being pluggable is not being trusted. Small open-source models produce more invalid
-evidence pointers and more subtle misreadings that pointer validation cannot catch. A
-model earns a place as a stage default by its results on the golden set (§7), which is
-also how a cheaper model is shown to be adequate for a stage. The registry records cost
-for reporting, never for routing, precisely so that this trade is made with evidence.
+The proposed deployment has a web service, a background worker, and Postgres. The worker
+would handle collection and AI tasks, including retries. The web service would provide
+reports, evidence exploration, and feedback. Neither service exists yet; the current
+command-line tool supports database setup and inspection of model and prompt settings.
 
-Providers implement one small protocol (`generate_structured`, `count_tokens`). Token
-counting is exact where the model has an endpoint and a deliberate overestimate where it
-does not; routing errs toward smaller inputs. See ADR-0005.
+Readers should see only information from repositories they can access. That restriction
+must apply when selecting inputs, reopening saved reports, and exploring evidence.
+Sign-in, access checks, and records of reader actions remain unbuilt.
 
-## 7. Verification and feedback
+GitHub and configured AI services are the intended external connections. An internal
+model can keep AI processing within the organization's network; actual network
+restrictions require deployment controls.
 
-- **Automated verification** runs a second model (registry-enforced to differ from the
-  producer) over each atomic claim with the cited evidence and the surrounding diff, and
-  stores a verdict. Cost is roughly a second summarization per PR, incurred once.
-  Default on for atomic summaries; on demand for aggregates.
-- **Human flags** are first-class rows (`flags`) on any claim, with a category:
-  `factual_error`, `overstated`, `understated`, `omission`, `misattribution`,
-  `selective_emphasis`, `other`, plus free text. Flags are visible on the claim wherever it
-  is rendered, and propagate upward: an aggregate claim whose sources carry open flags is
-  marked.
-- **Evaluation set.** Flagged and human-corrected claims become the regression set.
-  A prompt or model change is measured against it before it becomes the default. Prompts
-  are versioned files with content hashes recorded on every call.
+The feedback design lets readers flag a statement or report and explain the problem.
+Flags would also appear on reports built from disputed statements. Human corrections
+would become test cases for future changes. The tables exist; this workflow does not.
+The product describes work and excludes employee ranking or evaluation.
 
-## 8. Storage
+## 9. The next milestone
 
-Postgres only (ADR-0002). Migrations are plain SQL under `migrations/`, applied by a small
-runner; the schema is the provenance contract and is meant to be read as SQL.
-`migrations/0001_initial.sql` is the current data model. Highlights:
+The [roadmap](ROADMAP.md#1-vertical-slice-on-one-repository-no-ui) starts with one repository:
+collect its changes, produce and check claims, save evidence and reviewer verdicts, and
+inspect the results through a command-line tool. The
+[thesis](../THESIS.md#how-to-test-the-thesis) defines what to measure.
 
-- Snapshot tables are append-only. Re-fetching a PR writes a new snapshot version;
-  summaries reference the snapshot version they read.
-- `pr_claim_evidence`, `aggregate_claim_sources`, `verifications`, `flags` are the
-  provenance and feedback tables. Polymorphic references use nullable foreign key
-  columns with a `CHECK` that exactly one is set, so referential integrity is enforced
-  by the database.
-- `llm_calls` stores routing and usage for every call. Full request/response payloads are
-  stored by default for reproducibility and can be reduced to hashes for deployments
-  where storing diffs twice is unacceptable.
-- Background work (ingestion, summarization, verification) uses a Postgres job table with
-  `SELECT ... FOR UPDATE SKIP LOCKED`. PRs merge at human pace; a second queue system is
-  not justified.
+Priority failures are unsupported interpretations, prose that contradicts checked claims,
+inputs too large to process, and regressions after model or instruction changes. Access
+controls must be tested before serving readers. Existing component tests establish
+neither report quality nor a working product.
 
-## 9. Deployment, auth, and trust boundary
+## 10. Open questions
 
-- One container image, two roles: `altiscope serve` (API + UI) and `altiscope worker`.
-  Plus Postgres. That is the whole deployment.
-- Nothing leaves the deployment except calls to the configured LLM provider and GitHub.
-  Enterprises choose the provider (first-party API, Bedrock, Vertex, Foundry, or a
-  compatible gateway); the registry makes that a config change.
-- UI/API authentication: OIDC for SSO, GitHub OAuth for small orgs. Authorization
-  baseline mirrors GitHub: you can read a summary if you can read the repository. Roles
-  above that (org admin, team lead views) are additive. The permission check is a single
-  function at the API boundary from the first commit, so it cannot be forgotten later.
-- Audit log of who viewed what and who flagged what.
+1. **Changing work:** when should open or abandoned changes receive descriptions?
+2. **Comparisons:** what should side-by-side accounts of different people's work show?
+3. **Retention:** how much AI request and response content should organizations keep?
+4. **Interface:** how should readers move from an account to its evidence?
+5. **Review:** when does a second model help enough to justify its cost, and how should
+   disagreement affect publication?
+6. **Coverage:** does the existing citation statistic help readers, and how should it appear?
+7. **Prose:** how should every published paragraph be reconciled with its checked claims?
 
-## 10. Open questions for the owner
-
-These change what gets built and I have not resolved them alone:
-
-1. **Open and abandoned PRs.** Merged-only summaries make in-flight work invisible; a
-   manager asking "what is X working on" sees nothing until merge. Proposal: ingest all,
-   summarize merged only, show open/abandoned as facts (counts, ages, titles). Summarizing
-   open PRs later is possible but breaks "one-time event" caching.
-2. **Cross-developer comparison.** The brief lists it as a view. I recommend it be
-   side-by-side, not model-generated comparative judgment, because that surface is where
-   an LLM summary most easily becomes a performance verdict. Please confirm or overrule.
-3. **Payload retention.** Storing full prompts (which contain diffs) doubles stored
-   source code. Default full, with a hashes-only mode; is that acceptable for the
-   enterprise profile you have in mind?
-4. **UI.** Proposal is server-rendered HTML with HTMX for v1 so the repo stays one
-   language while the hard problems are solved; a richer front end can consume the same
-   JSON API later. This is the most reversible decision here.
-5. **Verification default.** Second-model verification on every atomic summary roughly
-   doubles per-PR cost. I have it default-on because accuracy is priority one.
-
-## 11. What is deliberately not built
-
-- Retrieval or embedding search over PR content. Each PR is bounded and is read whole.
-- Commit-level summaries.
-- Scheduled rollups.
-- Any code quality, security or compliance analysis. The `analyses`-style shape
-  (claims with evidence against a PR snapshot) is chosen so that a future "finding"
-  is the same kind of row as a claim, but no such stage exists.
+Search over embedded content, separate commit summaries, scheduled reports, and automated
+code-quality, security, or compliance analysis remain outside the first version.
