@@ -1,7 +1,7 @@
-"""Which inputs an aggregate cited, and which it left out.
+"""Count the immediate inputs cited by aggregate claims and list uncited inputs.
 
-The defence against selective emphasis (ADR-0007). Computed for every aggregate at every
-level of the reduction tree and stored in aggregate_summaries.coverage.
+An input can be a pull request summary or a child aggregate. This does not measure how
+much original work is represented. Saving coverage with aggregates remains unbuilt.
 """
 
 from __future__ import annotations

@@ -1,9 +1,8 @@
-"""The provider protocol every model backend implements.
+"""Define the adapter interface for structured generation and token counting.
 
-Deliberately two methods. Everything else (routing, prompt assembly, validation,
-storage) is provider-independent and lives elsewhere. Adapters differ only in how they
-obtain schema-shaped JSON from the model; the pipeline's own validation against the PR
-snapshot is the correctness guarantee, not the provider's schema enforcement.
+Routing, prompt preparation, evidence checks, and storage belong outside the adapters.
+Schema validation checks output shape; evidence validation checks references against
+source material. Neither establishes whether a statement is supported.
 """
 
 from __future__ import annotations
@@ -60,5 +59,5 @@ class Provider(Protocol):
     ) -> GenerationResult[T]: ...
 
     def count_tokens(self, *, model: ModelSpec, system: str, user: str) -> int:
-        """Exact when the model advertises `token_counting`; an overestimate otherwise."""
+        """Count the supplied system and user text through the endpoint or an estimate."""
         ...

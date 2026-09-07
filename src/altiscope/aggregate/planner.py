@@ -1,7 +1,7 @@
-"""Plan a query-time reduction tree so an arbitrary window fits a model's budget.
+"""Plan model calls that combine inputs in groups within an estimated token budget.
 
-Inputs are ordered deterministically (by merge time, then subject, then id), so the same
-query yields the same tree and the same cache keys. See ADR-0008.
+Sort PlanItems by their supplied order keys, IDs, and token counts. The same inputs and
+budget settings produce the same tree. Execution and caching remain unbuilt; see ADR-0008.
 """
 
 from __future__ import annotations

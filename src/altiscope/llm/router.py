@@ -1,7 +1,7 @@
-"""Routing: pick a model for a stage given the input size, and say why.
+"""Select a model by estimated input size and configured preference, and return a reason.
 
-The decision is stored on every llm_calls row (design principle 6). Routing is by fit
-and declared preference only; there is no cost-based logic here by design (ADR-0005).
+Routing does not optimize cost. Saving the decision in llm_calls remains unbuilt.
+See ADR-0005.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from altiscope.llm.types import Effort, Stage
 
 
 class RoutingError(Exception):
-    """No candidate can take the input. The caller must reduce it (see aggregate.planner)."""
+    """No candidate meets the size and producer-exclusion rules."""
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,7 @@ class RoutingDecision:
 def _independence_block(
     registry: Registry, stage: Stage, candidate: str, producer_model_id: str | None
 ) -> str | None:
-    """Why `candidate` is not independent enough of the producer, or None if it is."""
+    """Return the configured producer-exclusion reason, or None if allowed."""
     mode = registry.stages[stage].producer_independence
     if mode == "none" or producer_model_id is None:
         return None

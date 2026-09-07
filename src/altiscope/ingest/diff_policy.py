@@ -1,13 +1,8 @@
-"""What the model is shown, what it is not, and why.
+"""Select patch text for model input and record why files were excluded.
 
-The design principle is "read the full diff". The failure mode of that principle is a
-40,000-line lockfile. This module makes the exceptions deterministic, small, and
-disclosed: every excluded file is recorded with a reason, the exclusion list is part of
-the summary's input manifest, and the reader sees it next to the summary.
-
-Keep the exclusion rules conservative. Excluding a file the model should have read is
-an accuracy bug; including a large generated file is a cost problem. Prefer the cost
-problem.
+Rules cover generated files, dependencies, unavailable patches, and size limits.
+The input manifest lists exclusions for the model. Displaying them to readers remains
+unbuilt. Keep rules conservative: excluded files may contain relevant changes.
 """
 
 from __future__ import annotations

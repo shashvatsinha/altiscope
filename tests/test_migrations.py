@@ -38,8 +38,7 @@ def test_schema_applies_and_enforces_provenance_checks():
 
 
 def test_no_migration_edits_after_apply_marker():
-    # Guard against editing 0001 in place: its version string is asserted here so a
-    # rename is a conscious act.
+    # Check that the initial migration contains its expected version marker.
     text = (REPO_ROOT / "migrations" / "0001_initial.sql").read_text()
     assert "INSERT INTO schema_migrations (version) VALUES ('0001_initial')" in text
     assert Path(REPO_ROOT / "migrations").is_dir()

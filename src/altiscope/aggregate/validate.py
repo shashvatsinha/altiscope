@@ -1,8 +1,7 @@
-"""Enforce provenance on an aggregate output before storage.
+"""Remove unknown source tokens and drop claims with no valid sources.
 
-Every aggregate claim must cite only source tokens that were in the material. Claims
-that cite nothing valid are dropped and the drop is recorded; it counts against the
-aggregate in the same way uncited inputs do.
+Record both changes and raise an error if no claims remain. This checks source membership;
+it does not check whether sources support the claim or update the narrative or coverage.
 """
 
 from __future__ import annotations

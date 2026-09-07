@@ -1,16 +1,7 @@
-"""The model registry: which providers and models exist, and how each stage chooses.
+"""Load provider endpoints, model capabilities, and stage preferences from configuration.
 
-Loaded from config/models.yaml. See docs/adr/0005-model-registry-routing.md.
-
-Two ideas keep this provider-neutral:
-
-* A *provider* is a configured endpoint, not a vendor. One `openai_compatible` adapter
-  serves OpenAI, Azure OpenAI, Ollama, vLLM, LM Studio, llama.cpp, Groq, Together,
-  OpenRouter and any other server that speaks the chat-completions protocol. The same
-  kind can be declared several times with different base URLs.
-* A *model* declares capabilities. The adapter uses the best structured-output mode the
-  model supports and the pipeline validates the output the same way regardless, so a
-  model without native JSON-schema support is slower to converge, not unsafe.
+An adapter kind can serve several endpoints. Declared capabilities select the output
+mode; endpoint compatibility and output quality still need testing. See ADR-0005.
 """
 
 from __future__ import annotations
@@ -149,7 +140,7 @@ class Registry(BaseModel):
         return self.providers[self.models[model_id].provider]
 
     def input_budget(self, model_id: str, stage: Stage) -> int:
-        """Largest input (in tokens) the router will send to `model_id` for `stage`."""
+        """Maximum estimated input tokens allowed by configuration for this model and stage."""
         spec = self.models[model_id]
         usable = math.floor(spec.context_window * self.input_budget_fraction)
         return max(0, usable - self.stages[stage].reserved_output_tokens)

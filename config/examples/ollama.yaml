@@ -1,4 +1,4 @@
-# Fully local: open-source models on Ollama, nothing leaves the machine.
+# Route all model calls to the local Ollama endpoint. GitHub access is separate.
 # Model names and context lengths depend on what you have pulled; adjust.
 providers:
   ollama:

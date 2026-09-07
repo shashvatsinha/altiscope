@@ -1,4 +1,4 @@
-"""Facts computed in code from the snapshot. The model is given these; it never derives them."""
+"""Calculate facts from a pull request snapshot for inclusion in the model input."""
 
 from __future__ import annotations
 

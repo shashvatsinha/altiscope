@@ -1,16 +1,14 @@
-"""Token estimation for planning.
+"""Estimate tokens from character count for routing and planning.
 
-Routing and planning need a size estimate before a provider is chosen. The provider's
-own `count_tokens` is authoritative and should be used once a model is picked; this
-heuristic deliberately overestimates so that plans err toward smaller inputs.
+The estimate can be too low or too high. Use a provider's token-count endpoint where
+available, accounting for all parts of the request.
 """
 
 from __future__ import annotations
 
 import math
 
-# Claude tokenizers average roughly 3.5 characters per token on English prose and closer
-# to 3 on code and diffs. Diffs dominate our inputs, so use 3 and round up.
+# Approximate one token per three characters, rounded up. This is not an upper bound.
 _CHARS_PER_TOKEN = 3.0
 
 

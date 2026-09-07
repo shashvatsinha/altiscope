@@ -1,1 +1,1 @@
-"""Atomic per-PR summarization: facts, prompt context, and output validation."""
+"""Per-pull-request summaries: facts, prompt preparation, and reference checks."""

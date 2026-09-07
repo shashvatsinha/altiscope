@@ -1,5 +1,5 @@
 # Mixed vendors: Claude reads diffs and synthesizes; a self-hosted vLLM model verifies.
-# Cross-vendor verification is the strongest independence signal the registry offers.
+# Provider exclusion selects a different configured provider; models may still share errors.
 providers:
   anthropic:
     kind: anthropic
