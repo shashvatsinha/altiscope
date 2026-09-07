@@ -1,29 +1,30 @@
-# ADR-0006: GitHub App as the primary ingestion identity
+# ADR-0006: Use a GitHub App for organization access
 
 Status: proposed
 
 ## Context
 
-Ingestion needs to read PRs, diffs, review comments and team membership across many
-repositories, on github.com and GitHub Enterprise Server, under an identity an
-enterprise security team will approve.
+Collection needs access to pull requests, diffs, comments, and team membership across
+repositories on GitHub and GitHub Enterprise Server. Organization access should be
+managed independently of an individual employee's account.
 
 ## Decision
 
-- A GitHub App installed on the organization is the supported identity: least-privilege
-  permissions, installation tokens that expire in an hour, an audit trail on GitHub's
-  side, and no dependence on a human's account.
-- A personal access token is supported for evaluation and single-user use, labelled as
-  such in the UI and logs.
-- Polling with per-repository cursors is the baseline. Webhooks are added for freshness
-  and never trusted as the only source; a reconciliation pass catches missed events.
-- Everything fetched is stored as an immutable snapshot with a fetch timestamp. Summaries
-  reference the snapshot they read.
+- Use an organization-installed GitHub App with limited permissions and short-lived
+  installation tokens as the primary identity.
+- Support personal access tokens for evaluation and individual use. Identify this mode
+  in the UI and logs.
+- Poll with a cursor per repository. Add webhooks for faster updates while retaining
+  periodic reconciliation to recover missed events.
+- Save fetched material as immutable snapshots with fetch timestamps. Each summary
+  references the snapshot it used.
 
 ## Consequences
 
-- Setup for an organization is "install the app, paste the installation id", which is
-  what enterprise admins expect.
-- GHES support is a base-URL setting.
-- Rate limits are handled centrally in the client with backoff; backfilling a large org
-  is a background job, not an interactive command.
+- Organization setup would require installing and configuring the app, including its
+  installation ID and credentials.
+- GitHub Enterprise Server needs a configurable base URL and compatibility testing.
+- Handle rate limits and backoff in the client. Run large backfills as background jobs.
+
+The GitHub client interface exists. Authentication, fetching, snapshot storage, and
+background collection remain unbuilt.
