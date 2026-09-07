@@ -1,46 +1,50 @@
-# ADR-0007: Accuracy mechanisms
+# ADR-0007: Check accuracy and expose omissions
 
 Status: proposed
 
 ## Context
 
-The system's output is read by people with authority over other people. Errors are not
-merely unhelpful; they misrepresent someone's work to someone who decides about them.
-Outright factual error is only one failure mode. Selective emphasis (true claims that
-leave out most of the work), overstatement, and evaluative framing are the others, and
-they are harder to catch because every sentence is defensible in isolation.
+Reports can misrepresent work through factual errors, overstatement, or selective
+emphasis. A report may contain true statements while omitting relevant work. Readers
+need ways to inspect evidence, see omissions, and report errors.
 
 ## Decision
 
-Mechanisms, in the order they act:
+1. **Claims with evidence.** Represent each statement as a claim with references checked
+   against the source snapshot. Compose narrative from those claims.
+2. **Computed facts.** Calculate numbers in code, store them separately, and render
+   them from data.
+3. **Source disagreements.** Ask the model to identify differences between the pull
+   request description and its diff.
+4. **Excluded material.** Record files excluded by the diff policy in the input
+   manifest and show that list to readers.
+5. **Second-model review.** Review every claim about an individual pull request, with
+   review enabled by default.
+6. **Coverage.** Report cited and uncited inputs for each aggregate and mark results
+   below a configured threshold.
+7. **Human feedback.** Categorize reported errors, show flags on summaries that use
+   disputed sources, and use corrections as regression cases.
+8. **Describe work.** Exclude judgments about people. Any cross-developer view would
+   show separate accounts side by side, without AI-written comparisons.
 
-1. **Structure before prose.** Claims are atomic and typed; each carries evidence
-   pointers that are validated against the snapshot. Narrative is composed from claims,
-   not the other way round.
-2. **Numbers from code, never from the model.** Computed facts are stored separately
-   and rendered from data.
-3. **Description vs. diff.** The atomic prompt is explicitly asked to report where the
-   PR description and the diff disagree.
-4. **Disclosure of what was not read.** The diff policy's exclusions are in the input
-   manifest and are shown to the reader.
-5. **Second-model verification** of every atomic claim, default on.
-6. **Coverage reports** on every aggregate: which inputs were cited, which were not,
-   with a threshold that marks low-coverage aggregates.
-7. **Human flags** with categories that name the failure modes above, propagating from
-   sources to the aggregates built on them, and feeding a regression set.
-8. **No judgments about people.** Prompts describe work; they do not characterize
-   people. Cross-developer views are side by side, not model-authored comparisons.
+## Alternatives considered
 
-## Rejected
+- **Rely on one model and its prompt.** This lacks a separate review of whether evidence
+  supports the output. Evaluation on the team's own examples is still needed.
+- **Use model confidence as the primary quality signal.** A confidence score does not
+  explain whether the evidence supports a claim. A second model can provide an
+  inspectable explanation, though its usefulness must also be tested.
 
-- Relying on a single high-quality model and a good prompt. Necessary, not sufficient;
-  it provides no way for a team to check the system on their own PRs.
-- Confidence scores from the model as the primary quality signal. Self-reported
-  confidence is weakly calibrated; verification by a different model with the evidence in
-  hand is a stronger and more auditable signal.
+## Consequences and gaps
 
-## Consequences
-
-- Per-PR cost is roughly two model calls, once. This is the price of the property the
-  system exists to provide.
-- Prompts are versioned files with hashes; any change goes through the eval set.
+- Review adds model calls, cost, and latency. Its benefit needs measurement; separate
+  models can share errors.
+- Prompts are versioned and hashed. The proposed evaluation process should check changes
+  before adoption; the evaluation set and runner remain unbuilt.
+- The current schema generates narrative and claims together. Validation does not
+  reconcile every sentence with the claims, so the first decision above is not yet
+  enforced. Publication rules remain an
+  [open question](../ARCHITECTURE.md#10-open-questions).
+- Computing facts does not prevent generated prose from misstating them. Coverage counts
+  immediate inputs cited, which may be child summaries; it does not measure completeness
+  of the original work. Reader feedback and the review workflow remain unbuilt.

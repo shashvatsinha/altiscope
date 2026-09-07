@@ -1,18 +1,13 @@
-"""Adapter for any server speaking the OpenAI chat-completions protocol.
+"""Generate structured output through a compatible chat-completions endpoint.
 
-Covers OpenAI and Azure OpenAI, and the open-source serving stacks: Ollama, vLLM,
-llama.cpp, LM Studio, TGI, plus hosted gateways (Groq, Together, OpenRouter, ...).
+Declared capabilities select the mode:
+* native: pass the output schema to the SDK's parse method.
+* json_mode: request a JSON object, include the schema in the prompt, and validate locally.
+* prompt: include the schema in the prompt and validate locally.
 
-Structured output is obtained by the best mode the model declares:
-
-* native   - `response_format` with a JSON schema (OpenAI structured outputs, vLLM and
-             Ollama guided decoding). The server guarantees shape.
-* json_mode - `response_format: json_object`; the schema is prompted, the server only
-             guarantees syntax. We validate.
-* prompt   - nothing enforced; the schema is prompted, fences are stripped, we validate.
-
-An output that fails validation is returned with stop_reason `invalid_output`; the
-pipeline's single constrained retry handles it.
+In the latter two modes, strip code fences before validation. A completed response with
+no parsed result is marked invalid_output. SDK exceptions can propagate; retry handling
+belongs to the caller and remains unbuilt. Compatibility depends on the endpoint.
 """
 
 from __future__ import annotations
@@ -42,7 +37,7 @@ _FINISH_TO_STOP: dict[str, str] = {
     "content_filter": "refusal",
 }
 
-# Providers on this protocol take three levels; Altiscope's upper levels collapse to high.
+# Map Altiscope effort settings to the three levels used by this adapter.
 _EFFORT_MAP: dict[Effort, str] = {
     "low": "low",
     "medium": "medium",
@@ -171,6 +166,5 @@ class OpenAICompatibleProvider:
         )
 
     def count_tokens(self, *, model: ModelSpec, system: str, user: str) -> int:
-        # The chat-completions protocol has no portable token-count endpoint, and a
-        # tokenizer for one model is wrong for another. Plan with the overestimate.
+        # This adapter estimates the supplied text without an endpoint token count.
         return estimate_tokens(system) + estimate_tokens(user)

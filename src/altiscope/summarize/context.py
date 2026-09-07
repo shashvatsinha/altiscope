@@ -1,8 +1,7 @@
-"""Assemble what the model sees for one PR, and the token maps needed to validate its output.
+"""Prepare model input for one pull request and maps for checking comment references.
 
-The model refers to comments by opaque per-call tokens (c1, c2, ...) rather than GitHub
-ids, so it cannot cite a plausible-looking id that is not in the material. Files are
-referred to by path and commits by sha; both are validated against the snapshot.
+Comments use per-call tokens (c1, c2, ...) mapped to GitHub IDs. The validator rejects
+unknown tokens. Files use paths and commits use SHA prefixes checked against the snapshot.
 """
 
 from __future__ import annotations

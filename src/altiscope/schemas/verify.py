@@ -1,4 +1,4 @@
-"""Verification verdict for one claim, produced by a model other than the producer."""
+"""Define the model output for reviewing one claim against its evidence."""
 
 from __future__ import annotations
 

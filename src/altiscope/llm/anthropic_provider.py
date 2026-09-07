@@ -1,7 +1,7 @@
-"""Anthropic adapter: native structured output, adaptive thinking, effort levels.
+"""Generate structured output and count tokens through the Anthropic SDK.
 
-Also the adapter for Claude on Bedrock, Vertex and Foundry once those client classes are
-wired in (roadmap); the request surface is the same.
+Uses adaptive thinking and the requested effort level. Cloud-specific SDK clients are
+not wired into provider construction yet.
 """
 
 from __future__ import annotations

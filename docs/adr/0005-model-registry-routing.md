@@ -1,52 +1,49 @@
-# ADR-0005: Model choice is a routing decision from a config registry
+# ADR-0005: Configure model selection in a registry
 
 Status: proposed
 
 ## Context
 
-Reading a single diff and synthesizing three hundred summaries into a narrative are
-different tasks with different context and quality needs. Input size alone can force a
-model change. Enterprises often mandate a provider (Bedrock, Vertex, Foundry, a gateway).
-And the only trustworthy way to choose a model for this task is to compare real output
-on real PRs, which requires knowing which model produced each summary and why.
+Describing one pull request and combining hundreds of summaries have different input
+sizes and quality requirements. Organizations may also require particular model
+services. Configuration lets them choose models without changing pipeline code.
 
 ## Decision
 
-- `config/models.yaml` declares providers (an adapter kind plus an endpoint and the
-  environment variable holding its key), models (provider, wire name, context window,
-  max output, cost, capabilities) and per-stage routing: an ordered candidate list, an
-  effort level, and a producer-independence rule for verification (`model` or
-  `provider`).
-- Two adapter kinds ship: `anthropic` (native structured output, caching, effort) and
-  `openai_compatible`, which covers OpenAI, Azure OpenAI and every open-source serving
-  stack that speaks the chat-completions protocol (Ollama, vLLM, llama.cpp, LM Studio)
-  plus hosted gateways. A provider kind can be declared any number of times with
-  different endpoints. Gemini is a third adapter of the same shape when needed.
-- Models declare capabilities; the adapter picks the strongest structured-output mode
-  available (`native`, `json_mode`, `prompt`) and records which it used. The pipeline's
-  own validation against the snapshot is the correctness guarantee in every mode.
-- The router returns a `RoutingDecision` with the chosen model and a plain-language
-  `reason`. The decision is stored on `llm_calls` next to the prompt version hash, token
-  usage, latency and request id.
-- Providers implement a two-method protocol: `generate_structured` and `count_tokens`.
-  Where a model has no token-count endpoint the count is a deliberate overestimate.
-- Routing is by fit and preference only. No cost optimization logic in v1; the registry
-  records cost so it can be reported, not so the router can trade quality for it
-  silently.
+- Declare providers, models, and per-stage preferences in `config/models.yaml`.
+  A provider specifies an adapter, endpoint, and API-key environment variable. A model
+  specifies its provider, API name, context and output limits, prices, and capabilities.
+- Use two adapters: `anthropic` and `openai_compatible` for compatible chat-completions
+  endpoints. The same adapter kind can serve several configured endpoints. A native
+  Gemini adapter could be added later.
+- Select structured-output mode from declared capabilities: `native`, `json_mode`, then
+  `prompt`. Record the mode used and check evidence references separately. Neither
+  schema validation nor reference validation establishes that a claim is accurate.
+- Route to the first eligible model with room for the estimated input. Configure effort
+  per stage. For verification, `model` excludes the producing model and `provider`
+  excludes its configured provider.
+- Return a `RoutingDecision` with the chosen model and reason. Store it on `llm_calls`
+  with the prompt hash, usage, latency, and request ID when storage is implemented.
+- Providers implement `generate_structured` and `count_tokens`. Use a token-count
+  endpoint where supported; otherwise estimate from character count.
+- Use prices for cost reporting. Routing follows capacity and preference, without
+  automatic cost optimization.
 
-## Rejected
+## Alternatives considered
 
-- A multi-provider abstraction library. Broad coverage, but a fast-moving API surface
-  and lowest-common-denominator support for structured outputs. Two adapters (native
-  Anthropic, chat-completions protocol) reach the same set of models with less to
-  maintain; a third for Gemini is small.
-- Hardcoding one model per stage. Fine for a week, then someone needs Bedrock.
+- **A multi-provider library.** Could offer broader coverage, but adds a dependency and
+  may not expose the structured-output features needed here. Direct adapters keep
+  those protocol choices visible, at the cost of maintaining them ourselves.
+- **Hardcode one model per stage.** This would require code changes to switch models
+  or deployment endpoints.
 
 ## Consequences
 
-- Swapping a model for a stage is a config change and a cache invalidation, and both
-  old and new outputs remain in the database for comparison.
-- Token counting goes through the provider so an exact count is used where one exists;
-  elsewhere a conservative character-based estimate keeps plans small.
-- Pluggable is not trusted. Any model can be routed to; only the golden set (ADR-0007)
-  says whether it should be a stage default.
+- Changing a stage's model is a configuration change. The planned cache must distinguish
+  models and retain older outputs for comparison.
+- Endpoint compatibility depends on the server and its settings. A registry entry alone
+  does not establish compatibility or output quality.
+- Character-based token estimates can be too low or too high. Complete-request budgeting
+  and handling oversized requests still need work.
+- Different models or providers may share errors. Evaluate defaults on human-reviewed
+  examples; that evaluation workflow remains unbuilt.

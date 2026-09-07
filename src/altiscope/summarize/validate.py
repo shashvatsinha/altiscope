@@ -1,7 +1,7 @@
-"""Check a PrSummaryOutput against the snapshot it claims to describe.
+"""Check summary references against the supplied PR context and report language warnings.
 
-This runs before storage. A summary that fails is retried once with the errors appended
-to the prompt; if it fails again it is stored with status `needs_review`, never published.
+Returns errors and warnings. Retry, storage, and publication handling remain unbuilt.
+These checks establish that references match the material, not that claims are supported.
 """
 
 from __future__ import annotations
@@ -14,8 +14,7 @@ from altiscope.summarize.context import PrContext
 
 _WS_RE = re.compile(r"\s+")
 
-# Words that evaluate people or effort rather than describe work. Warnings, not errors:
-# some are legitimate in technical context ("fast path"). Reviewed by a human via flags.
+# Flag these phrases as warnings for review; context may make a use legitimate.
 _EVALUATIVE_WORDS: tuple[str, ...] = (
     "impressive",
     "sloppy",

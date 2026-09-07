@@ -4,27 +4,25 @@ Status: proposed
 
 ## Context
 
-An open-source tool benefits from a zero-dependency quickstart, which argues for SQLite.
-The provenance model relies on foreign keys, check constraints, JSONB for facts and
-manifests, and `SKIP LOCKED` for background jobs. The deployment target for every
-organization above hobby scale is Postgres.
+SQLite would simplify local setup. The proposed storage design uses Postgres JSONB for
+facts and input manifests, foreign keys for evidence links, and `SKIP LOCKED` for jobs.
+Supporting one database limits the queries and migrations that need testing.
 
 ## Decision
 
-Postgres 15+ only. Local development uses `docker compose up db`. Migrations are plain
-SQL files applied in order by a small runner; the schema is meant to be read.
+Support Postgres 15+. Use `docker compose up db` for local development. Apply numbered
+SQL migrations in order with the migration runner.
 
-## Rejected
+## Alternatives considered
 
-- **SQLite + Postgres.** Two dialects means either a lowest-common-denominator schema
-  (losing JSONB operators and `SKIP LOCKED`) or a test matrix that doubles. Every
-  provenance query would need to be verified twice.
-- **An ORM with migrations generated from models.** SQLAlchemy would be a reasonable
-  choice; the reason to avoid it now is that the schema *is* the design artifact for
-  provenance, and hand-written SQL keeps it legible and reviewable. This can be revisited
-  if the query layer becomes repetitive.
+- **SQLite and Postgres.** Would require database-specific queries or avoiding Postgres
+  features such as JSONB operators and `SKIP LOCKED`. Both paths would need testing.
+- **An ORM with generated migrations.** Could reduce repetitive query code. For now,
+  handwritten SQL keeps the tables and constraints visible during design review.
+  Revisit this if the query layer becomes repetitive.
 
 ## Consequences
 
-- Quickstart requires Docker or a local Postgres. The README says so up front.
-- All integration tests run against a real Postgres in CI.
+- Setup requires Docker or a local Postgres installation; see
+  [Contributing](../../CONTRIBUTING.md).
+- CI runs integration tests against Postgres.

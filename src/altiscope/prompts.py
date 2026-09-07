@@ -1,4 +1,7 @@
-"""Versioned prompt files with front matter; the content hash is recorded on every call."""
+"""Load versioned prompt files and hash their contents, including front matter.
+
+Recording the hash with each model call remains part of the planned storage workflow.
+"""
 
 from __future__ import annotations
 
@@ -44,7 +47,7 @@ def load_prompt(path: Path) -> Prompt:
     if "version" not in meta or "schema_version" not in meta:
         msg = f"{path}: front matter needs version and schema_version"
         raise ValueError(msg)
-    # Hash the whole file so a front matter change is a new version too.
+    # Include front matter so metadata edits also change the hash.
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
     return Prompt(
         stage=stage,  # type: ignore[arg-type]
