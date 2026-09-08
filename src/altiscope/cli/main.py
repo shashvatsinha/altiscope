@@ -156,16 +156,14 @@ def summarize(repository: str, number: int) -> None:
             prompt=latest_prompt(settings.prompts_dir, "pr_summary"),
             retention=settings.llm_payload_retention,
         )
-    typer.echo(f"Account {summary_id}; use show to inspect publication status and evidence.")
+    typer.echo(f"Account {summary_id}; use show to inspect review status and PR provenance.")
 
 
 @app.command()
 def show(
     repository: str,
     number: int,
-    verbose: Annotated[
-        bool, typer.Option(help="Show evidence, provenance, facts, and omissions")
-    ] = False,
+    verbose: Annotated[bool, typer.Option(help="Show PR provenance, facts, and omissions")] = False,
 ) -> None:
     """Inspect the latest snapshot's account, sources, computed facts and omissions."""
     from altiscope.store.accounts import account_provenance, load_account, load_account_context

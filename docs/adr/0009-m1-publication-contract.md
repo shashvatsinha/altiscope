@@ -1,6 +1,6 @@
 # ADR-0009: Publish citation-valid claims with explicit unverified interpretation
 
-Status: proposed
+Status: superseded by [ADR-0010](0010-pr-review-provenance.md)
 
 ## Context
 

@@ -20,5 +20,5 @@ def test_shipped_prompts_parse_and_hash():
 
 def test_latest_prompt_per_stage():
     p = latest_prompt(REPO_ROOT / "prompts", "pr_summary")
-    assert p.version == "v2"
-    assert "There is no separate headline or narrative" in p.body
+    assert p.version == "v3"
+    assert "Do not require or produce per-claim citations" in p.body

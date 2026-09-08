@@ -6,7 +6,7 @@ records can support useful accounts at several levels of detail, with evidence t
 readers can inspect, at less total effort than preparing those accounts manually.
 
 **Milestone 1 implementation is under review.** The CLI collects one public pull request,
-stores its source, generates evidence-bearing claims and shows computed facts and omissions.
+stores its source, generates a code-based review linked to its PR and shows computed facts and omissions.
 Interpretations are explicitly unverified.
 
 [Read the example account](examples/m1/README.md) · [Run the walkthrough](docs/M1-WALKTHROUGH.md)
@@ -37,8 +37,9 @@ customer outcomes would require further evidence.
 
 ## The approach
 
-Altiscope would save the source material, use AI to describe each change, check the
-references, and ask a second model to review the interpretation. Readers would choose
+Altiscope would save the source material, use AI to review each PR, and link the
+review back to that PR for human inspection. A later independent model may assess the
+overall review. Readers would choose
 people, teams, or repositories, a date range, and a level of detail.
 
 The aim is an account that is easier to check and reuse. Its accuracy and usefulness
@@ -47,7 +48,7 @@ still need to be tested on real work.
 ## Explore or contribute
 
 The first workflow connects public-PR collection, immutable snapshots, provider-neutral
-generation, evidence checks and CLI inspection. Aggregation, semantic verification,
+generation, PR provenance and CLI inspection. Aggregation, semantic verification,
 organization access and a user interface remain future milestones.
 
 - [Thesis](THESIS.md): why this is worth trying and how to test it.

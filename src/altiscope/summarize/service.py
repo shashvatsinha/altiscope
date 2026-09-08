@@ -34,8 +34,8 @@ def summarize(
 ) -> int:
     if stored.snapshot.state != PrState.merged:
         raise ValueError("Only merged pull requests can be summarized in M1")
-    if prompt.schema_version != 2:
-        raise ValueError("The M1 account requires schema version 2")
+    if prompt.schema_version != 3:
+        raise ValueError("The M1 account requires schema version 3")
     ctx = prepare(stored.snapshot)
     decision = route(registry, "pr_summary", request_tokens(prompt.body, render_user_prompt(ctx)))
     selected = provider or ProviderPool(registry).for_model(decision.model_id)

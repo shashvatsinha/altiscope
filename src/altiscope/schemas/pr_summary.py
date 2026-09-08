@@ -11,7 +11,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-PR_SUMMARY_SCHEMA_VERSION = 2
+PR_SUMMARY_SCHEMA_VERSION = 3
 
 
 class ClaimKind(StrEnum):
@@ -113,3 +113,11 @@ class PrAccountOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     claims: list[Claim] = Field(min_length=1)
+
+
+class PrReviewOutput(BaseModel):
+    """M1 v3: an overall code review; the application attaches PR provenance."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    review: str = Field(min_length=1, description="Overall review of the supplied PR code changes.")

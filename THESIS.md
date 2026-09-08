@@ -37,13 +37,14 @@ fewer problems. A useful summary must respect that boundary.
 AI makes it possible to attempt the reading and writing in software. Altiscope's proposed
 advantage is making the result easier to check, correct, and use in another account.
 
-The system would check that references match the saved source, then ask a second model
-whether the evidence supports each statement. These are different checks: a real citation
-can accompany a mistaken interpretation. The second model can also be wrong.
+The application links each generated review to its source PR for human inspection.
+A later independent model may assess the overall review against the changes. That
+assessment can also be wrong; provenance remains useful regardless of its verdict.
+Per-claim assessment is not planned.
 
-Milestone 1 displays only evidence-bearing statements and code-computed facts, with
-interpretations explicitly unverified. Richer prose reconciliation remains future work. The
-[architecture](docs/ARCHITECTURE.md#4-claims-and-validation) describes that limitation.
+Milestone 1 produces an overall code-based review with a deterministic PR association,
+code-computed facts and disclosed input omissions. Interpretations remain unverified.
+The [architecture](docs/ARCHITECTURE.md#4-reviews-and-publication) describes the contract.
 
 ## What could make this fail
 

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from altiscope.ingest.snapshot import PullRequestSnapshot
 from altiscope.llm.registry import Registry
-from altiscope.schemas.pr_summary import PrAccountOutput
+from altiscope.schemas.pr_summary import PrReviewOutput
 from altiscope.summarize.fixture import FixtureProvider
 from altiscope.summarize.generate import generate_account, request_tokens
 from altiscope.summarize.publication import PublicationState
 from tests.conftest import REPO_ROOT
-from tests.test_summarize import good_output, make_context
+from tests.test_summarize import make_context
 
 
 def generate(snapshot: PullRequestSnapshot, responses: list[str], budget: int = 100000):
@@ -26,12 +26,12 @@ def generate(snapshot: PullRequestSnapshot, responses: list[str], budget: int = 
     return result, provider
 
 
-def test_repair_once_and_withhold_all_bad_claims(snapshot: PullRequestSnapshot):
-    good = PrAccountOutput(claims=good_output().claims).model_dump_json()
-    bad = good.replace("app/main.py", "unknown.py")
+def test_repair_malformed_review_once(snapshot: PullRequestSnapshot):
+    good = PrReviewOutput(review="run() acquires a module-level lock.").model_dump_json()
+    bad = '{"review": " "}'
     repaired, provider = generate(snapshot, [bad, good])
     assert provider.calls == 2
-    assert repaired.publication.state == PublicationState.citation_valid
+    assert repaired.publication.state == PublicationState.published
     assert repaired.attempts[0].errors
     failed, provider = generate(snapshot, [bad, bad, good])
     assert provider.calls == 2

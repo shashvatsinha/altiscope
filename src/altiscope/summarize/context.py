@@ -43,7 +43,7 @@ def build_context(
 
 
 def render_user_prompt(ctx: PrContext) -> str:
-    """Deterministic text the model reads. Order matches prompts/pr_summary/v1.md."""
+    """Deterministic text the model reads. Code changes precede PR prose."""
     s = ctx.snapshot
     parts: list[str] = []
 
@@ -97,7 +97,7 @@ def render_user_prompt(ctx: PrContext) -> str:
         )
     else:
         parts.append("- (none)")
-    parts.append("\nComments (cite by id):")
+    parts.append("\nComments:")
     by_id = {(c.kind, c.github_id): c for c in s.comments}
     if ctx.comment_tokens:
         for token, identity in ctx.comment_tokens.items():

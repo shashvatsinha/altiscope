@@ -5,7 +5,7 @@ milestone integration branch. Main advances only after the full demo, checks and
 component completion alone does not authorize a release.
 
 1. [One change, explained — #4](https://github.com/shashvatsinha/altiscope/issues/4).
-   Public PR ingestion, immutable snapshots, claims-only publication, provider-neutral
+   Public PR ingestion, immutable snapshots, PR-linked review publication, provider-neutral
    generation and provenance, CLI inspection and a credential-free demo. Implementation
    children [#11](https://github.com/shashvatsinha/altiscope/issues/11) through
    [#17](https://github.com/shashvatsinha/altiscope/issues/17). Implementation under review;

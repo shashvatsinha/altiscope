@@ -1,8 +1,7 @@
 SYNTHETIC FIXTURE DEMO — recorded response, no live model call.
 PR acme/widgets#42
 https://github.com/acme/widgets/pull/42
-Status: citation_valid; interpretation unverified
+Status: published; interpretation unverified
 
-1. run() acquires a module-level lock.
-
-2. A test for run() was added.
+run() acquires a module-level lock around the working-directory lookup. A test for run() was added, but it only checks for a truthy result; it does not exercise concurrent callers.
+Input omissions: 1 files excluded from model input.

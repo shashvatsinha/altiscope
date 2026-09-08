@@ -1,11 +1,10 @@
-"""Save model attempts and publish claims with same-snapshot evidence ownership."""
+"""Save model attempts and publish reviews linked to their immutable PR snapshot."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 from dataclasses import asdict
-from typing import Any
 from uuid import uuid4
 
 import psycopg
@@ -16,7 +15,7 @@ from altiscope.ingest.snapshot import PullRequestSnapshot
 from altiscope.llm.registry import Registry
 from altiscope.llm.router import RoutingDecision
 from altiscope.prompts import Prompt
-from altiscope.schemas.pr_summary import Evidence, EvidenceType, PrAccountOutput
+from altiscope.schemas.pr_summary import PrReviewOutput
 from altiscope.store.snapshots import insert
 from altiscope.summarize.context import PrContext, build_context
 from altiscope.summarize.facts import PrFacts
@@ -26,41 +25,6 @@ from altiscope.summarize.publication import Publication, PublicationState, asses
 
 def _digest(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
-
-
-def _evidence(
-    conn: psycopg.Connection, snapshot_id: int, ev: Evidence, ctx: PrContext
-) -> dict[str, Any]:
-    values: dict[str, Any] = dict(evidence_type=ev.type, quote=ev.quote, hunk_header=ev.hunk_header)
-    row = None
-    if ev.type in (EvidenceType.file, EvidenceType.hunk):
-        row = conn.execute(
-            "SELECT id FROM pr_files WHERE pull_request_id=%s AND path=%s AND included",
-            (snapshot_id, ev.path),
-        ).fetchone()
-        key = "pr_file_id"
-    elif ev.type == EvidenceType.review_comment:
-        assert ev.comment_id is not None
-        kind, github_id = ctx.comment_tokens[ev.comment_id]
-        row = conn.execute(
-            "SELECT id FROM pr_comments WHERE pull_request_id=%s AND kind=%s AND github_id=%s",
-            (snapshot_id, kind, github_id),
-        ).fetchone()
-        key = "pr_comment_id"
-    elif ev.type == EvidenceType.commit:
-        assert ev.commit_sha is not None
-        rows = conn.execute(
-            "SELECT id FROM pr_commits WHERE pull_request_id=%s AND lower(sha) LIKE %s",
-            (snapshot_id, ev.commit_sha.lower() + "%"),
-        ).fetchall()
-        row = rows[0] if len(rows) == 1 else None
-        key = "pr_commit_id"
-    else:
-        return values
-    if row is None:
-        raise ValueError("Evidence does not belong to the stored snapshot")
-    values[key] = int(row[0])
-    return values
 
 
 def save_account(
@@ -100,7 +64,7 @@ def save_account(
             request = dict(
                 system=prompt.body,
                 user=attempt.user,
-                schema=PrAccountOutput.model_json_schema(),
+                schema=PrReviewOutput.model_json_schema(),
                 model=model.wire_name,
                 effort=decision.effort,
                 output_mode=result.output_mode,
@@ -158,7 +122,7 @@ def save_account(
                 ),
             )
         checked = assess(generated.publication.output, ctx)
-        published = checked.state == PublicationState.citation_valid
+        published = checked.state == PublicationState.published
         # A failed rerun must not replace the current published account.
         if published:
             conn.execute(
@@ -176,66 +140,33 @@ def save_account(
                 is_current=published,
                 status="published" if published else "needs_review",
                 headline="",
-                narrative="",
+                narrative=checked.output.review if checked.output else "",
                 facts=Jsonb(ctx.facts.model_dump(mode="json")),
                 input_manifest=Jsonb(ctx.manifest.model_dump(mode="json")),
             ),
         )
-        if checked.output:
-            for ordinal, claim in enumerate(checked.output.claims, 1):
-                claim_id = insert(
-                    conn,
-                    "pr_claims",
-                    dict(
-                        pr_summary_id=summary_id, ordinal=ordinal, kind=claim.kind, text=claim.text
-                    ),
-                )
-                for ev in claim.evidence:
-                    insert(
-                        conn,
-                        "pr_claim_evidence",
-                        dict(pr_claim_id=claim_id, **_evidence(conn, snapshot_id, ev, ctx)),
-                    )
         return summary_id
 
 
 def load_account(conn: psycopg.Connection, snapshot_id: int, ctx: PrContext) -> Publication:
     row = conn.execute(
-        "SELECT id,status FROM pr_summaries WHERE pull_request_id=%s ORDER BY id DESC LIMIT 1",
+        "SELECT s.id,s.status,c.provider,c.model_id,c.stop_reason,c.error,"
+        "s.narrative,s.schema_version "
+        "FROM pr_summaries s JOIN llm_calls c ON c.id=s.llm_call_id "
+        "WHERE s.pull_request_id=%s ORDER BY s.is_current DESC,s.id DESC LIMIT 1",
         (snapshot_id,),
     ).fetchone()
     if row is None:
         raise ValueError("No account exists; run summarize first")
     if row[1] != "published":
-        return assess(None, ctx)
-    claims: list[dict[str, Any]] = []
-    for claim_id, kind, text in conn.execute(
-        "SELECT id,kind,text FROM pr_claims WHERE pr_summary_id=%s ORDER BY ordinal", (row[0],)
-    ):
-        evidence: list[dict[str, Any]] = []
-        for ev in conn.execute(
-            "SELECT e.evidence_type,e.quote,e.hunk_header,f.path,c.kind,c.github_id,m.sha "
-            "FROM pr_claim_evidence e LEFT JOIN pr_files f ON f.id=e.pr_file_id "
-            "LEFT JOIN pr_comments c ON c.id=e.pr_comment_id "
-            "LEFT JOIN pr_commits m ON m.id=e.pr_commit_id WHERE e.pr_claim_id=%s ORDER BY e.id",
-            (claim_id,),
-        ):
-            token = next(
-                (t for t, identity in ctx.comment_tokens.items() if identity == (ev[4], ev[5])),
-                None,
-            )
-            evidence.append(
-                dict(
-                    type=ev[0],
-                    quote=ev[1],
-                    hunk_header=ev[2],
-                    path=ev[3],
-                    comment_id=token,
-                    commit_sha=ev[6],
-                )
-            )
-        claims.append(dict(kind=kind, text=text, evidence=evidence))
-    return assess(PrAccountOutput.model_validate(dict(claims=claims)), ctx)
+        _, _, provider, model_id, stop_reason, error, _, _ = row
+        detail = error or f"model call ended with {stop_reason}"
+        return Publication(
+            PublicationState.needs_review,
+            None,
+            (f"Generated account withheld: {provider}/{model_id}: {detail}",),
+        )
+    return assess(PrReviewOutput(review=row[6]), ctx)
 
 
 def account_provenance(conn: psycopg.Connection, snapshot_id: int) -> str:
@@ -243,7 +174,7 @@ def account_provenance(conn: psycopg.Connection, snapshot_id: int) -> str:
         "SELECT c.provider,c.model_id,p.name,p.content_hash,s.schema_version "
         "FROM pr_summaries s JOIN llm_calls c ON c.id=s.llm_call_id "
         "JOIN prompt_versions p ON p.id=s.prompt_version_id "
-        "WHERE s.pull_request_id=%s ORDER BY s.id DESC LIMIT 1",
+        "WHERE s.pull_request_id=%s ORDER BY s.is_current DESC,s.id DESC LIMIT 1",
         (snapshot_id,),
     ).fetchone()
     if row is None:
@@ -264,7 +195,7 @@ def load_account_context(
     """Use the published facts and manifest, not today's potentially changed policy."""
     row = conn.execute(
         "SELECT facts,input_manifest FROM pr_summaries WHERE pull_request_id=%s "
-        "ORDER BY id DESC LIMIT 1",
+        "ORDER BY is_current DESC,id DESC LIMIT 1",
         (snapshot_id,),
     ).fetchone()
     if row is None:

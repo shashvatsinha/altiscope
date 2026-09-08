@@ -8,7 +8,7 @@ import pytest
 from altiscope.ingest.snapshot import PullRequestSnapshot
 from altiscope.llm.registry import Registry
 from altiscope.prompts import latest_prompt
-from altiscope.schemas.pr_summary import PrAccountOutput
+from altiscope.schemas.pr_summary import PrReviewOutput
 from altiscope.store.accounts import load_account
 from altiscope.store.snapshots import save_snapshot
 from altiscope.summarize.fixture import FixtureProvider
@@ -16,7 +16,6 @@ from altiscope.summarize.publication import PublicationState
 from altiscope.summarize.service import prepare, summarize
 from tests.conftest import REPO_ROOT
 from tests.test_snapshot_store import unique_snapshot
-from tests.test_summarize import good_output
 
 pytestmark = [
     pytest.mark.integration,
@@ -26,8 +25,8 @@ pytestmark = [
 
 def test_success_repair_failure_and_rerun(database: str, snapshot: PullRequestSnapshot):
     snapshot, repo_id = unique_snapshot(snapshot)
-    good = PrAccountOutput(claims=good_output().claims).model_dump_json()
-    bad = good.replace("app/main.py", "missing.py")
+    good = PrReviewOutput(review="run() acquires a module-level lock.").model_dump_json()
+    bad = '{"review": " "}'
     registry = Registry.load(REPO_ROOT / "config/models.yaml")
     prompt = latest_prompt(REPO_ROOT / "prompts", "pr_summary")
     with psycopg.connect(database) as conn:
@@ -52,10 +51,7 @@ def test_success_repair_failure_and_rerun(database: str, snapshot: PullRequestSn
             provider=FixtureProvider([bad, good]),
         )
         assert repaired != first
-        assert (
-            load_account(conn, stored.id, prepare(snapshot)).state
-            == PublicationState.citation_valid
-        )
+        assert load_account(conn, stored.id, prepare(snapshot)).state == PublicationState.published
         second = summarize(
             conn,
             stored,
@@ -89,3 +85,24 @@ def test_success_repair_failure_and_rerun(database: str, snapshot: PullRequestSn
             (prompt.content_hash,),
         ).fetchone()
         assert source == (prompt.source_text,)
+
+        failed = summarize(
+            conn,
+            stored,
+            registry=registry,
+            prompt=prompt,
+            retention="full",
+            provider=FixtureProvider([bad, bad]),
+        )
+        assert failed != second
+        published = load_account(conn, stored.id, prepare(snapshot))
+        assert published.state == PublicationState.published
+        assert published.output and published.output.review == "run() acquires a module-level lock."
+        assert conn.execute(
+            "SELECT narrative,schema_version,pull_request_id FROM pr_summaries WHERE id=%s",
+            (second,),
+        ).fetchone() == (published.output.review, 3, stored.id)
+        assert conn.execute(
+            "SELECT count(*) FROM pr_claims WHERE pr_summary_id=%s",
+            (second,),
+        ).fetchone() == (0,)

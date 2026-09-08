@@ -10,7 +10,7 @@ from altiscope.llm.provider import GenerationResult, Provider
 from altiscope.llm.registry import ModelSpec
 from altiscope.llm.tokens import estimate_tokens
 from altiscope.llm.types import Effort
-from altiscope.schemas.pr_summary import PrAccountOutput
+from altiscope.schemas.pr_summary import PrReviewOutput
 from altiscope.summarize.context import PrContext, render_user_prompt
 from altiscope.summarize.publication import Publication, PublicationState, assess
 
@@ -18,7 +18,7 @@ from altiscope.summarize.publication import Publication, PublicationState, asses
 @dataclass(frozen=True)
 class Attempt:
     user: str
-    result: GenerationResult[PrAccountOutput]
+    result: GenerationResult[PrReviewOutput]
     errors: tuple[str, ...]
     started_at: datetime
     finished_at: datetime
@@ -31,7 +31,7 @@ class GeneratedAccount:
 
 
 def request_tokens(system: str, user: str) -> int:
-    schema = json.dumps(PrAccountOutput.model_json_schema(), sort_keys=True)
+    schema = json.dumps(PrReviewOutput.model_json_schema(), sort_keys=True)
     # Schema plus instruction/envelope allowance; estimates are not exact token counts.
     return estimate_tokens(system) + estimate_tokens(user) + estimate_tokens(schema) + 256
 
@@ -64,14 +64,16 @@ def generate_account(
             model=model,
             system=system,
             user=user,
-            output_type=PrAccountOutput,
+            output_type=PrReviewOutput,
             max_tokens=max_tokens,
             effort=effort,
         )
         publication = assess(result.parsed if result.ok else None, ctx)
         errors = publication.errors if result.ok else (result.stop_reason,)
+        if not result.ok:
+            publication = Publication(PublicationState.needs_review, None, errors)
         attempts.append(Attempt(user, result, errors, started_at, datetime.now(UTC)))
-        if publication.state == PublicationState.citation_valid:
+        if publication.state == PublicationState.published:
             return GeneratedAccount(publication, tuple(attempts))
         if result.stop_reason not in ("end_turn", "invalid_output"):
             return GeneratedAccount(publication, tuple(attempts))

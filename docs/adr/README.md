@@ -18,4 +18,5 @@ Keep the reasoning concise. Add a superseding record when reversing a decision.
 | [0006](0006-github-app-ingestion.md) | Use a GitHub App for organization access | proposed |
 | [0007](0007-accuracy-over-breadth.md) | Check accuracy and expose omissions | proposed |
 | [0008](0008-query-time-aggregation.md) | Build reports on demand through a summary tree | proposed |
-| [0009](0009-m1-publication-contract.md) | M1 claims-only publication with unverified interpretation | proposed |
+| [0009](0009-m1-publication-contract.md) | M1 claims-only publication with unverified interpretation | superseded by 0010 |
+| [0010](0010-pr-review-provenance.md) | PR-level reviews and provenance; supersedes 0009 | accepted |

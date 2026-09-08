@@ -27,7 +27,7 @@ def test_persisted_demo_and_show(database: str, monkeypatch: pytest.MonkeyPatch)
     assert shown.exit_code == 0, shown.exception
     assert "Provider: fixture" in shown.output
     assert "interpretation unverified" in shown.output
-    assert "run() acquires a module-level lock." in shown.output
+    assert "run() acquires a module-level lock around the working-directory lookup." in shown.output
     verbose = runner.invoke(app, ["show", "--verbose", "acme/widgets", "42"])
     assert "package-lock.json" in verbose.output
 

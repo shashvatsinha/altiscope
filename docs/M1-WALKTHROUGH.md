@@ -22,7 +22,7 @@ docker compose up -d db
 uv run altiscope db migrate
 uv run altiscope demo --persist
 uv run altiscope show acme/widgets 42
-# The default is concise. Add --verbose for evidence, provenance, facts, and omissions.
+# The default is concise. Add --verbose for PR provenance, facts, and omissions.
 uv run altiscope show --verbose acme/widgets 42
 ```
 
@@ -58,10 +58,11 @@ This sends the selected public PR to OpenRouter and incurs its API cost. The M1 
 uses Claude Sonnet through OpenRouter's OpenAI-compatible endpoint. The registry remains
 replaceable; this choice is not an evaluated model ranking.
 
-The report shows validated claims, evidence excerpts, computed facts and omissions.
-`citation_valid` does not mean semantically verified. Invalid output is repaired at most
-once; terminal failure is `needs_review`, with all generated account text withheld.
-A failed run does not replace an existing published account for the same snapshot.
+The report shows an overall code-based review and its source PR link. `published`
+means usable output, not verified interpretation. Malformed or empty output is repaired
+at most once; terminal failure is `needs_review`. A failed run does not replace an
+existing published review for the same snapshot. Use `show --verbose` for stored
+snapshot/model provenance, facts and input omissions. No claim citations are required.
 
 ## OpenRouter
 
@@ -84,7 +85,7 @@ The key is read from `.env` and never included in request provenance.
 New source versions never silently reuse an older source's account.
 
 Set `ALTISCOPE_LLM_PAYLOAD_RETENTION=hashes_only` to retain request/response hashes rather
-than duplicate full LLM payloads. Source snapshots and published claims are still retained.
+than duplicate full LLM payloads. Source snapshots and published reviews are still retained.
 Usage, selected configuration and available provider metadata remain recorded.
 
 ## Validation
@@ -103,9 +104,8 @@ repair, failed runs and retained historical output. Use a development/test datab
 
 ## Limitations
 
-Pointer validation is not semantic verification. Prompts cannot guarantee absence of
-unsupported interpretation or an incorrectly repeated number. Language checks are
-heuristics. Token estimates include schema and request overhead but are not exact.
+PR provenance is not semantic verification. Prompts cannot guarantee absence of
+unsupported interpretation or an incorrectly repeated number. Token estimates include schema and request overhead but are not exact.
 Collection can miss edits that GitHub does not expose through its PR update timestamp;
 M1 does not provide a cross-endpoint transactional GitHub snapshot. Excluded patches can
 contain important work. No employee evaluation, UI, private ingestion, aggregation,

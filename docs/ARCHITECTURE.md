@@ -14,8 +14,8 @@ remain pending. See [release evidence](releases/m1.md) and the [walkthrough](M1-
 | Collection | Public REST detail, paginated files/commits/reviews/both comment kinds, bounded retries, file and commit count reconciliation. |
 | Storage | Postgres immutable source versions, raw payloads, relational evidence and one latest snapshot under concurrency. |
 | Preparation | Computed facts, disclosed diff exclusions, opaque compound comment identity. |
-| Generation | Provider-neutral structured output, complete-text request estimate, one output/evidence repair. |
-| Publication | Claims-only v2 account; invalid output withheld; semantic interpretation explicitly unverified. |
+| Generation | Provider-neutral structured output, complete-text request estimate, one malformed-output repair. |
+| Publication | Overall v3 review linked to its PR; interpretation explicitly unverified. |
 | Inspection | CLI account, excerpts, source version, prompt hash, model/provider identity and input omissions. |
 | Demonstration | Credential-free synthetic fixture and optional persisted replay using the same services. |
 
@@ -31,9 +31,9 @@ Public PR → paginated collection → immutable Postgres snapshot
                                          ↓
                       versioned prompt → registry → provider
                                          ↓
-                       citation/language checks → one repair
+                       output shape checks → one repair
                                          ↓
-                       calls + claims + relational evidence
+                       calls + review + source PR association
                                          ↓
                           CLI account + sources + omissions
 ```
@@ -62,26 +62,17 @@ patches and oversized text. Stored input manifests disclose exclusions, counts a
 settings. `show` uses stored facts and manifests so later policy changes cannot silently
 change what an older account says it read.
 
-## 4. Claims and validation
+## 4. Reviews and publication
 
-The [M1 publication decision](adr/0009-m1-publication-contract.md) uses v2 claims-only output.
-Legacy v1 schema/prompt files remain readable. Headline, narrative, discrepancies and
-uncertainties cannot enter the M1 report as unchecked free prose.
+[ADR-0010](adr/0010-pr-review-provenance.md) defines the v3 overall review. The
+application attaches PR provenance; the model does not emit claim citations.
+Code patches are primary input and PR prose is context. Every review is labeled
+`interpretation unverified`. Humans can inspect its source PR; independent assessment
+of the overall review is deferred. Per-claim assessment is not planned.
 
-Quotes match case-sensitively after whitespace collapse; blanks fail. Commits use a
-hexadecimal prefix of at least seven characters resolving uniquely to shown commits.
-Hunk references match a complete syntactically valid header. Files must be included;
-comment tokens must resolve to the supplied material.
-
-These checks establish source membership, not whether the claim's interpretation is
-supported. Every account says `interpretation unverified`. M1 defers mandatory second-model
-review, superseding that part of ADR-0007. Language warnings withhold publication too,
-but these heuristics do not guarantee detection of all evaluative or unsupported wording.
-
-Only malformed output and invalid citations permit one full replacement attempt. A second
-failure becomes `needs_review`, with no generated account text published. No bad-claim
-cleanup can leave its wording behind. Refusal, truncation and transport failure are terminal
-generation outcomes. SDK transport retries are bounded and separate from output repair.
+Malformed or empty output permits one replacement attempt. Refusal, truncation and
+transport failure remain unpublished. Input omissions are disclosed. Publication
+establishes usable output and PR traceability, not factual correctness.
 
 ## 5. Answering a reader's question
 
@@ -93,13 +84,12 @@ model/prompt comparisons. No employee evaluation is supported.
 ## 6. Keeping results traceable
 
 Postgres retains prompt versions, returned generation attempts, selected configuration,
-request/response hashes and available usage/request metadata. Claims and evidence publish
-atomically after same-snapshot ownership checks. A new generation run retains earlier
+request/response hashes and available usage/request metadata. Reviews publish atomically after checking that the input matches the stored PR snapshot. A new generation run retains earlier
 runs. One current publication is selected per snapshot; a failed run does not displace it.
 New source never silently reuses an old source's report.
 
 Full retention duplicates the logical model request and response text. Hashes-only omits
-those payloads while retaining metadata; source snapshots and published claims remain.
+those payloads while retaining metadata; source snapshots and published reviews remain.
 Cost is an estimate using configured input/output rates, not an exact provider charge;
 cache-specific pricing is not modeled. Process failure before persistence is not a durable
 job retry mechanism. Background execution and crash recovery belong to later milestones.
@@ -134,7 +124,7 @@ control and feedback are not yet implemented.
 
 ## 9. Evaluation
 
-Offline regressions cover evidence defects, output withholding, repair limits, provider
+Offline regressions cover PR review traceability, output withholding, repair limits, provider
 outcomes, collection errors and storage invariants. The checked-in sample is synthetic,
 with a hand-authored response and documented agent review. Owner review remains pending.
 It does not establish live model accuracy. The human-reviewed 20-PR study belongs to M3.
