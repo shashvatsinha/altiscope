@@ -58,8 +58,8 @@ def test_shipped_registry_loads_and_routes():
         d = route(reg, stage, 50_000)
         assert d.model_id in reg.models
         assert d.reason
-    assert reg.models["llama-3.3-70b"].wire_name == "llama3.3:70b"
-    assert reg.provider_for("llama-3.3-70b").kind == "openai_compatible"
+    assert reg.models["openrouter-anthropic"].wire_name == "anthropic/claude-sonnet-5"
+    assert reg.provider_for("openrouter-openai").kind == "openai_compatible"
 
 
 @pytest.mark.parametrize("name", ["openai", "ollama", "mixed"])

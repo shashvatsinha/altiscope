@@ -1,6 +1,6 @@
 """Check summary references against the supplied PR context and report language warnings.
 
-Returns errors and warnings. Retry, storage, and publication handling remain unbuilt.
+Returns errors and warnings for the generation and publication services.
 These checks establish that references match the material, not that claims are supported.
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from altiscope.schemas.pr_summary import Evidence, EvidenceType, PrSummaryOutput
+from altiscope.schemas.pr_summary import Evidence, EvidenceType, PrAccountOutput, PrSummaryOutput
 from altiscope.summarize.context import PrContext
 
 _WS_RE = re.compile(r"\s+")
@@ -36,7 +36,7 @@ _EVALUATIVE_RE = re.compile(
 
 
 def _norm(text: str) -> str:
-    return _WS_RE.sub(" ", text).strip().lower()
+    return _WS_RE.sub(" ", text).strip()
 
 
 @dataclass
@@ -63,17 +63,22 @@ def _check_evidence(ev: Evidence, ctx: PrContext, where: str) -> str | None:
         if ev.type is EvidenceType.hunk:
             assert ev.hunk_header is not None
             patch = ctx.patch_for(ev.path) or ""
-            if ev.hunk_header.strip() not in {ln.strip() for ln in patch.splitlines()}:
+            if (
+                not re.fullmatch(
+                    r"@@ -[0-9]+(?:,[0-9]+)? \+[0-9]+(?:,[0-9]+)? @@[^\n]*", ev.hunk_header
+                )
+                or ev.hunk_header not in patch.splitlines()
+            ):
                 return f"{where}: hunk {ev.hunk_header!r} not found in {ev.path!r}"
         return None
     if ev.type is EvidenceType.description:
         assert ev.quote is not None
-        if _norm(ev.quote) not in _norm(s.body):
+        if not _norm(ev.quote) or _norm(ev.quote) not in _norm(s.body):
             return f"{where}: quote not found in description: {ev.quote!r}"
         return None
     if ev.type is EvidenceType.pr_title:
         assert ev.quote is not None
-        if _norm(ev.quote) not in _norm(s.title):
+        if not _norm(ev.quote) or _norm(ev.quote) not in _norm(s.title):
             return f"{where}: quote not found in title: {ev.quote!r}"
         return None
     if ev.type is EvidenceType.review_comment:
@@ -83,20 +88,29 @@ def _check_evidence(ev: Evidence, ctx: PrContext, where: str) -> str | None:
         return None
     if ev.type is EvidenceType.commit:
         assert ev.commit_sha is not None
-        if not any(c.sha.startswith(ev.commit_sha) for c in s.commits):
+        if (
+            not re.fullmatch(r"[0-9a-fA-F]{7,40}", ev.commit_sha)
+            or sum(c.sha.lower().startswith(ev.commit_sha.lower()) for c in s.commits) != 1
+        ):
             return f"{where}: unknown commit {ev.commit_sha!r}"
         return None
     return f"{where}: unhandled evidence type {ev.type}"  # pragma: no cover
 
 
-def validate_summary(output: PrSummaryOutput, ctx: PrContext) -> ValidationResult:
+def validate_summary(output: PrSummaryOutput | PrAccountOutput, ctx: PrContext) -> ValidationResult:
     result = ValidationResult()
     for i, claim in enumerate(output.claims, start=1):
+        if not any(ev.type in (EvidenceType.file, EvidenceType.hunk) for ev in claim.evidence):
+            result.errors.append(
+                f"claim {i}: must cite at least one included file or diff hunk; "
+                "PR prose alone cannot establish a code change"
+            )
         for j, ev in enumerate(claim.evidence, start=1):
             error = _check_evidence(ev, ctx, where=f"claim {i} evidence {j}")
             if error:
                 result.errors.append(error)
         result.warnings.extend(f"claim {i}: {w}" for w in lint_language(claim.text))
-    result.warnings.extend(f"narrative: {w}" for w in lint_language(output.narrative))
-    result.warnings.extend(f"headline: {w}" for w in lint_language(output.headline))
+    if isinstance(output, PrSummaryOutput):
+        result.warnings.extend(f"narrative: {w}" for w in lint_language(output.narrative))
+        result.warnings.extend(f"headline: {w}" for w in lint_language(output.headline))
     return result

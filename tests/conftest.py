@@ -112,3 +112,17 @@ def snapshot() -> PullRequestSnapshot:
             ),
         ],
     )
+
+
+@pytest.fixture
+def database():
+    import os
+
+    import psycopg
+
+    from altiscope.store.migrate import apply_pending
+
+    url = os.environ["ALTISCOPE_DATABASE_URL"]
+    with psycopg.connect(url) as conn:
+        apply_pending(conn, REPO_ROOT / "migrations")
+    return url

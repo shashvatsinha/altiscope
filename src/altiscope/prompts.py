@@ -1,6 +1,6 @@
 """Load versioned prompt files and hash their contents, including front matter.
 
-Recording the hash with each model call remains part of the planned storage workflow.
+The account store records the hash with each model call.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ class Prompt:
     schema_version: int
     content_hash: str
     body: str
+    source_text: str
     path: Path
 
 
@@ -55,6 +56,7 @@ def load_prompt(path: Path) -> Prompt:
         schema_version=int(meta["schema_version"]),
         content_hash=digest,
         body=body.strip() + "\n",
+        source_text=raw,
         path=path,
     )
 

@@ -204,3 +204,29 @@ def test_factory_builds_anthropic_provider(monkeypatch: pytest.MonkeyPatch):
         ProviderSpec(name="anthropic", kind="anthropic", api_key_env="ANTHROPIC_API_KEY")
     )
     assert isinstance(p, AnthropicProvider) and p.name == "anthropic"
+
+
+@pytest.mark.parametrize(
+    ("content", "finish", "stop"),
+    [
+        ('{"headline":"h","count":"many"}', "stop", "invalid_output"),
+        ("not JSON", "stop", "invalid_output"),
+        ('{"headline":', "length", "max_tokens"),
+        ("", "content_filter", "refusal"),
+    ],
+)
+def test_native_failures_preserve_usage(content: str, finish: str, stop: str):
+    server = FakeServer(_completion(content, finish=finish))
+    result = _provider(server).generate_structured(
+        model=_model("json_schema"),
+        system="s",
+        user="u",
+        output_type=Out,
+        max_tokens=100,
+        effort="low",
+    )
+    assert result.stop_reason == stop
+    assert result.parsed is None
+    assert result.usage.input_tokens == 11
+    assert result.usage.output_tokens == 7
+    assert result.raw_text == content

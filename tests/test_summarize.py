@@ -8,13 +8,13 @@ from altiscope.summarize.facts import compute_facts
 from altiscope.summarize.validate import lint_language, validate_summary
 
 
-def _ctx(snapshot: PullRequestSnapshot) -> PrContext:
+def make_context(snapshot: PullRequestSnapshot) -> PrContext:
     outcome = apply(snapshot.files)
     facts = compute_facts(snapshot, outcome)
     return build_context(snapshot, outcome, facts, manifest(outcome))
 
 
-def _good_output() -> PrSummaryOutput:
+def good_output() -> PrSummaryOutput:
     return PrSummaryOutput(
         headline="run() now takes a lock",
         claims=[
@@ -57,23 +57,27 @@ def test_facts_are_computed_from_snapshot(snapshot: PullRequestSnapshot):
 
 
 def test_context_assigns_opaque_comment_tokens_in_time_order(snapshot: PullRequestSnapshot):
-    ctx = _ctx(snapshot)
-    assert ctx.comment_tokens == {"c1": 501, "c2": 502}
+    ctx = make_context(snapshot)
+    assert ctx.comment_tokens == {"c1": ("review", 501), "c2": ("issue", 502)}
     prompt = render_user_prompt(ctx)
-    assert "<comment id=c1 author=bob on app/main.py:3>" in prompt
+    assert "<comment id=c1 kind=review author=bob on app/main.py:3>" in prompt
+    assert "# 3. Code changes (primary evidence)" in prompt
+    assert prompt.index("# 4. Patches of included files") < prompt.index(
+        "# 5. Pull request context"
+    )
     assert "package-lock.json [lockfile] +400/-380" in prompt
     assert "<file path='app/main.py'>" in prompt
-    assert "501" not in prompt.split("# 5.")[1]  # no GitHub ids leak into the material
+    assert "501" not in prompt.split("# 6.")[1]  # no GitHub ids leak into the material
 
 
 def test_valid_summary_passes(snapshot: PullRequestSnapshot):
-    result = validate_summary(_good_output(), _ctx(snapshot))
+    result = validate_summary(good_output(), make_context(snapshot))
     assert result.ok, result.errors
     assert result.warnings == []
 
 
 def test_bad_pointers_are_rejected(snapshot: PullRequestSnapshot):
-    out = _good_output()
+    out = good_output()
     out.claims[0].evidence = [
         Evidence(type=EvidenceType.file, path="package-lock.json"),
         Evidence(type=EvidenceType.file, path="does/not/exist.py"),
@@ -83,7 +87,7 @@ def test_bad_pointers_are_rejected(snapshot: PullRequestSnapshot):
         Evidence(type=EvidenceType.review_comment, comment_id="c9"),
         Evidence(type=EvidenceType.commit, commit_sha="deadbeef"),
     ]
-    result = validate_summary(out, _ctx(snapshot))
+    result = validate_summary(out, make_context(snapshot))
     assert not result.ok
     assert len(result.errors) == 6
     assert any("excluded from the material" in e for e in result.errors)
@@ -95,9 +99,9 @@ def test_bad_pointers_are_rejected(snapshot: PullRequestSnapshot):
 
 
 def test_evaluative_language_is_a_warning_not_an_error(snapshot: PullRequestSnapshot):
-    out = _good_output()
+    out = good_output()
     out.narrative = "An impressive fix; alice was very productive."
-    result = validate_summary(out, _ctx(snapshot))
+    result = validate_summary(out, make_context(snapshot))
     assert result.ok
     assert len(result.warnings) == 2
     assert lint_language("fast path for cache hits") == []

@@ -1,0 +1,1 @@
+{"review": "run() acquires a module-level lock around the working-directory lookup. A test for run() was added, but it only checks for a truthy result; it does not exercise concurrent callers."}

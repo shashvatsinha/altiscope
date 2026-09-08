@@ -11,7 +11,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-PR_SUMMARY_SCHEMA_VERSION = 1
+PR_SUMMARY_SCHEMA_VERSION = 3
 
 
 class ClaimKind(StrEnum):
@@ -101,3 +101,23 @@ class PrSummaryOutput(BaseModel):
     description_vs_diff: list[Discrepancy] = Field(default_factory=list)
     uncertainties: list[str] = Field(default_factory=list)
     narrative: str = Field(min_length=1, description="Composed only from the claims above.")
+
+
+class PrAccountOutput(BaseModel):
+    """M1 v2: every displayed model sentence is an evidence-bearing claim.
+
+    The legacy v1 schema remains readable for historical outputs. No free-standing
+    headline, narrative, discrepancy, or uncertainty can bypass claim validation.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    claims: list[Claim] = Field(min_length=1)
+
+
+class PrReviewOutput(BaseModel):
+    """M1 v3: an overall code review; the application attaches PR provenance."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    review: str = Field(min_length=1, description="Overall review of the supplied PR code changes.")

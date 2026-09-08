@@ -1,6 +1,6 @@
 """Prepare model input for one pull request and maps for checking comment references.
 
-Comments use per-call tokens (c1, c2, ...) mapped to GitHub IDs. The validator rejects
+Comments use per-call tokens (c1, c2, ...) mapped to (kind, GitHub ID). The validator rejects
 unknown tokens. Files use paths and commits use SHA prefixes checked against the snapshot.
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from altiscope.ingest.diff_policy import InputManifest, PolicyOutcome
-from altiscope.ingest.snapshot import PullRequestSnapshot
+from altiscope.ingest.snapshot import CommentKind, PullRequestSnapshot
 from altiscope.summarize.facts import PrFacts
 
 
@@ -19,7 +19,7 @@ class PrContext:
     facts: PrFacts
     manifest: InputManifest
     outcome: PolicyOutcome
-    comment_tokens: dict[str, int] = field(default_factory=dict)  # token -> comment github_id
+    comment_tokens: dict[str, tuple[CommentKind, int]] = field(default_factory=dict)
 
     @property
     def included_paths(self) -> set[str]:
@@ -35,15 +35,15 @@ class PrContext:
 def build_context(
     snapshot: PullRequestSnapshot, outcome: PolicyOutcome, facts: PrFacts, manifest: InputManifest
 ) -> PrContext:
-    ordered = sorted(snapshot.comments, key=lambda c: (c.created_at, c.github_id))
-    tokens = {f"c{i}": c.github_id for i, c in enumerate(ordered, start=1)}
+    ordered = sorted(snapshot.comments, key=lambda c: (c.created_at, c.kind, c.github_id))
+    tokens = {f"c{i}": (c.kind, c.github_id) for i, c in enumerate(ordered, start=1)}
     return PrContext(
         snapshot=snapshot, facts=facts, manifest=manifest, outcome=outcome, comment_tokens=tokens
     )
 
 
 def render_user_prompt(ctx: PrContext) -> str:
-    """Deterministic text the model reads. Order matches prompts/pr_summary/v1.md."""
+    """Deterministic text the model reads. Code changes precede PR prose."""
     s = ctx.snapshot
     parts: list[str] = []
 
@@ -65,26 +65,30 @@ def render_user_prompt(ctx: PrContext) -> str:
     else:
         parts.append("\nNo files were excluded.")
 
-    parts.append("\n\n# 3. Pull request\n")
-    parts.append(f"Repository: {s.repository}  Number: #{s.number}  Base: {s.base_ref}")
-    parts.append(f"Title: {s.title}")
-    parts.append("Description (verbatim):")
-    parts.append("<description>")
-    parts.append(s.body if s.body.strip() else "(empty)")
-    parts.append("</description>")
+    parts.append("\n\n# 3. Code changes (primary evidence)\n")
+    parts.append(
+        "Use the included patches below as the primary evidence for what changed. "
+        "A PR description or comment can explain intent, but cannot establish that code changed."
+    )
 
-    parts.append("\n\n# 4. Patches of included files\n")
+    parts.append("\n\n# 4. Patches of included files (primary source)\n")
     for path in ctx.manifest.included_paths:
         patch = ctx.patch_for(path)
         parts.append(f"<file path={path!r}>")
         parts.append(patch or "")
         parts.append("</file>")
 
-    parts.append("\n\n# 5. Commits, reviews and comments\n")
+    parts.append("\n\n# 5. Pull request context\n")
+    parts.append(f"Repository: {s.repository}  Number: #{s.number}  Base: {s.base_ref}")
+    parts.append(f"Title: {s.title}")
+    parts.append("Description (verbatim; context, not proof of code change):")
+    parts.append("<description>")
+    parts.append(s.body if s.body.strip() else "(empty)")
+    parts.append("</description>")
+
+    parts.append("\n\n# 6. Commits, reviews and comments\n")
     parts.append("Commits:")
-    parts.extend(
-        f"- {c.sha[:12]}: {c.message.splitlines()[0] if c.message else ''}" for c in s.commits
-    )
+    parts.extend(f"- {c.sha}: {c.message.splitlines()[0] if c.message else ''}" for c in s.commits)
     parts.append("\nReviews:")
     if s.reviews:
         parts.extend(
@@ -93,13 +97,13 @@ def render_user_prompt(ctx: PrContext) -> str:
         )
     else:
         parts.append("- (none)")
-    parts.append("\nComments (cite by id):")
-    by_id = {c.github_id: c for c in s.comments}
+    parts.append("\nComments:")
+    by_id = {(c.kind, c.github_id): c for c in s.comments}
     if ctx.comment_tokens:
-        for token, github_id in ctx.comment_tokens.items():
-            c = by_id[github_id]
+        for token, identity in ctx.comment_tokens.items():
+            c = by_id[identity]
             where = f" on {c.path}:{c.line}" if c.path else ""
-            parts.append(f"<comment id={token} author={c.author_login}{where}>")
+            parts.append(f"<comment id={token} kind={c.kind.value} author={c.author_login}{where}>")
             parts.append(c.body)
             parts.append("</comment>")
     else:

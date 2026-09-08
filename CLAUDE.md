@@ -10,8 +10,8 @@ change needs a decision reversed, add a superseding ADR in the same PR.
   source does not support is not a feature.
 - The model never produces numbers; code computes facts. The model never emits database
   ids; it emits per-call opaque tokens the system maps back and validates.
-- Every claim has evidence rows. Every aggregate claim has source rows. Validation of
-  those pointers happens before storage, not in the UI.
+- PR reviews link to their immutable PR snapshot and model call. M1 does not require
+  claim citations or per-claim assessment; see ADR-0010.
 - No evaluative language about people in any prompt or template.
 - Prompts are versioned files under `prompts/`. Never edit one that has produced
   published output; add a new version.
