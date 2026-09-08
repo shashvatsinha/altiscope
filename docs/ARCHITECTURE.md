@@ -13,7 +13,7 @@ remain pending. See [release evidence](releases/m1.md) and the [walkthrough](M1-
 |---|---|
 | Collection | Public REST detail, paginated files/commits/reviews/both comment kinds, bounded retries, file and commit count reconciliation. |
 | Storage | Postgres immutable source versions, raw payloads, relational evidence and one latest snapshot under concurrency. |
-| Preparation | Computed facts, disclosed diff exclusions, opaque compound comment identity. |
+| Preparation | Computed facts, disclosed diff exclusions, deterministically ordered comments. |
 | Generation | Provider-neutral structured output, complete-text request estimate, one malformed-output repair. |
 | Publication | Overall v3 review linked to its PR; interpretation explicitly unverified. |
 | Inspection | CLI account, excerpts, source version, prompt hash, model/provider identity and input omissions. |
@@ -55,7 +55,8 @@ The source writer serializes updates through the repository row. A partial uniqu
 enforces one latest source version. A hash of normalized material, excluding fetch time,
 reuses unchanged source; changed material creates new source rows. Older files, comments,
 commits and evidence remain intact. New source versions retain raw API payloads and fetch
-time. Comment identity is `(kind, GitHub ID)`, mapped to opaque per-request tokens.
+time. Comment identity is `(kind, GitHub ID)`. Model input presents comments in deterministic
+order with their kind, author, location and body.
 
 Facts are computed in code. File policy excludes generated files, dependencies, missing
 patches and oversized text. Stored input manifests disclose exclusions, counts and policy
@@ -135,3 +136,7 @@ Owner review of proposed ADRs and the sample remains required before release. La
 milestones must resolve narrative reconciliation, aggregate lineage/coverage, semantic
 review policy, private access and operational retention defaults. M1 does not settle
 those decisions by implication.
+
+Database cleanup of unused claim/evidence structures is deferred. Before extending
+aggregation, verification, or feedback storage, follow the dependency checklist in
+[ADR-0010](adr/0010-pr-review-provenance.md#deferred-database-cleanup).

@@ -6,8 +6,8 @@ from altiscope.schemas.pr_summary import PrReviewOutput
 from altiscope.summarize.fixture import FixtureProvider
 from altiscope.summarize.generate import generate_account, request_tokens
 from altiscope.summarize.publication import PublicationState
+from altiscope.summarize.service import prepare
 from tests.conftest import REPO_ROOT
-from tests.test_summarize import make_context
 
 
 def generate(snapshot: PullRequestSnapshot, responses: list[str], budget: int = 100000):
@@ -15,7 +15,7 @@ def generate(snapshot: PullRequestSnapshot, responses: list[str], budget: int = 
     model = registry.models[registry.stages["pr_summary"].candidates[0]]
     provider = FixtureProvider(responses)
     result = generate_account(
-        make_context(snapshot),
+        prepare(snapshot),
         provider,
         model,
         system="instructions",

@@ -1,45 +1,10 @@
 from __future__ import annotations
 
-from altiscope.ingest.diff_policy import apply, manifest
+from altiscope.ingest.diff_policy import apply
 from altiscope.ingest.snapshot import PullRequestSnapshot
-from altiscope.schemas.pr_summary import Claim, ClaimKind, Evidence, EvidenceType, PrSummaryOutput
-from altiscope.summarize.context import PrContext, build_context, render_user_prompt
+from altiscope.summarize.context import render_user_prompt
 from altiscope.summarize.facts import compute_facts
-from altiscope.summarize.validate import lint_language, validate_summary
-
-
-def make_context(snapshot: PullRequestSnapshot) -> PrContext:
-    outcome = apply(snapshot.files)
-    facts = compute_facts(snapshot, outcome)
-    return build_context(snapshot, outcome, facts, manifest(outcome))
-
-
-def good_output() -> PrSummaryOutput:
-    return PrSummaryOutput(
-        headline="run() now takes a lock",
-        claims=[
-            Claim(
-                kind=ClaimKind.bugfix,
-                text="run() acquires a module-level lock.",
-                evidence=[
-                    Evidence(
-                        type=EvidenceType.hunk, path="app/main.py", hunk_header="@@ -1,4 +1,6 @@"
-                    ),
-                    Evidence(type=EvidenceType.description, quote="Wraps run() in a lock"),
-                ],
-            ),
-            Claim(
-                kind=ClaimKind.test,
-                text="A test for run() was added.",
-                evidence=[
-                    Evidence(type=EvidenceType.file, path="tests/test_main.py"),
-                    Evidence(type=EvidenceType.review_comment, comment_id="c2"),
-                    Evidence(type=EvidenceType.commit, commit_sha="1111111"),
-                ],
-            ),
-        ],
-        narrative="run() acquires a lock; a test was added.",
-    )
+from altiscope.summarize.service import prepare
 
 
 def test_facts_are_computed_from_snapshot(snapshot: PullRequestSnapshot):
@@ -56,61 +21,28 @@ def test_facts_are_computed_from_snapshot(snapshot: PullRequestSnapshot):
     assert facts.linked_issues == [17]
 
 
-def test_context_assigns_opaque_comment_tokens_in_time_order(snapshot: PullRequestSnapshot):
-    ctx = make_context(snapshot)
-    assert ctx.comment_tokens == {"c1": ("review", 501), "c2": ("issue", 502)}
+def test_context_shows_code_before_prose_and_discloses_omissions(snapshot: PullRequestSnapshot):
+    ctx = prepare(snapshot)
     prompt = render_user_prompt(ctx)
-    assert "<comment id=c1 kind=review author=bob on app/main.py:3>" in prompt
+    assert "<comment kind=review author=bob on app/main.py:3>" in prompt
     assert "# 3. Code changes (primary evidence)" in prompt
     assert prompt.index("# 4. Patches of included files") < prompt.index(
         "# 5. Pull request context"
     )
     assert "package-lock.json [lockfile] +400/-380" in prompt
     assert "<file path='app/main.py'>" in prompt
-    assert "501" not in prompt.split("# 6.")[1]  # no GitHub ids leak into the material
 
 
-def test_valid_summary_passes(snapshot: PullRequestSnapshot):
-    result = validate_summary(good_output(), make_context(snapshot))
-    assert result.ok, result.errors
-    assert result.warnings == []
-
-
-def test_bad_pointers_are_rejected(snapshot: PullRequestSnapshot):
-    out = good_output()
-    out.claims[0].evidence = [
-        Evidence(type=EvidenceType.file, path="package-lock.json"),
-        Evidence(type=EvidenceType.file, path="does/not/exist.py"),
-        Evidence(type=EvidenceType.hunk, path="app/main.py", hunk_header="@@ -9,9 +9,9 @@"),
-        Evidence(type=EvidenceType.description, quote="rewrites the scheduler"),
-        Evidence(type=EvidenceType.pr_title, quote="thread-safe"),
-        Evidence(type=EvidenceType.review_comment, comment_id="c9"),
-        Evidence(type=EvidenceType.commit, commit_sha="deadbeef"),
-    ]
-    result = validate_summary(out, make_context(snapshot))
-    assert not result.ok
-    assert len(result.errors) == 6
-    assert any("excluded from the material" in e for e in result.errors)
-    assert any("not in the material" in e for e in result.errors)
-    assert any("hunk" in e for e in result.errors)
-    assert any("quote not found in description" in e for e in result.errors)
-    assert any("unknown comment id 'c9'" in e for e in result.errors)
-    assert any("unknown commit 'deadbeef'" in e for e in result.errors)
-
-
-def test_evaluative_language_is_a_warning_not_an_error(snapshot: PullRequestSnapshot):
-    out = good_output()
-    out.narrative = "An impressive fix; alice was very productive."
-    result = validate_summary(out, make_context(snapshot))
-    assert result.ok
-    assert len(result.warnings) == 2
-    assert lint_language("fast path for cache hits") == []
-
-
-def test_evidence_shape_is_enforced():
-    import pytest
-
-    with pytest.raises(ValueError, match="requires hunk_header"):
-        Evidence(type=EvidenceType.hunk, path="a.py")
-    with pytest.raises(ValueError, match="requires quote"):
-        Evidence(type=EvidenceType.description)
+def test_comments_with_shared_id_are_preserved_in_stable_order(snapshot: PullRequestSnapshot):
+    snapshot.comments[1].github_id = snapshot.comments[0].github_id
+    expected = render_user_prompt(prepare(snapshot))
+    snapshot.comments.reverse()
+    actual = render_user_prompt(prepare(snapshot))
+    assert actual == expected
+    assert actual.count("Should this lock be re-entrant?") == 1
+    assert actual.count("Added the test you asked for.") == 1
+    assert actual.index("Should this lock be re-entrant?") < actual.index(
+        "Added the test you asked for."
+    )
+    assert "kind=review author=bob on app/main.py:3" in actual
+    assert "kind=issue author=alice" in actual
