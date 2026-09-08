@@ -29,11 +29,43 @@ def test_schema_applies_and_enforces_provenance_checks():
             cur.execute("SELECT count(*) FROM schema_migrations")
             row = cur.fetchone()
             assert row is not None and row[0] >= 1
+            # obsolete scaffold tables dropped
+            cur.execute("SELECT to_regclass('public.pr_claims') IS NOT NULL")
+            assert cur.fetchone() == (False,)
+            cur.execute("SELECT to_regclass('public.pr_claim_evidence') IS NOT NULL")
+            assert cur.fetchone() == (False,)
+
             # exactly-one-source check on aggregate_claim_sources
             cur.execute("SAVEPOINT s")
             with pytest.raises(psycopg.errors.CheckViolation):
                 cur.execute("INSERT INTO aggregate_claim_sources (aggregate_claim_id) VALUES (1)")
             cur.execute("ROLLBACK TO SAVEPOINT s")
+
+            cur.execute("SAVEPOINT s2")
+            with pytest.raises(psycopg.errors.CheckViolation):
+                cur.execute(
+                    "INSERT INTO aggregate_claim_sources "
+                    "(aggregate_claim_id, pr_summary_id, source_aggregate_claim_id) "
+                    "VALUES (1, 1, 1)"
+                )
+            cur.execute("ROLLBACK TO SAVEPOINT s2")
+
+            # verifications check (pr_summary_id, aggregate_id, aggregate_claim_id)
+            cur.execute("SAVEPOINT s3")
+            with pytest.raises(psycopg.errors.CheckViolation):
+                cur.execute(
+                    "INSERT INTO verifications (llm_call_id, verdict, rationale) "
+                    "VALUES (1, 'supported', 'ok')"
+                )
+            cur.execute("ROLLBACK TO SAVEPOINT s3")
+
+            # flags check (aggregate_claim_id, pr_summary_id, aggregate_id)
+            cur.execute("SAVEPOINT s4")
+            with pytest.raises(psycopg.errors.CheckViolation):
+                cur.execute(
+                    "INSERT INTO flags (raised_by_id, category) VALUES (1, 'factual_error')"
+                )
+            cur.execute("ROLLBACK TO SAVEPOINT s4")
         conn.rollback()
 
 

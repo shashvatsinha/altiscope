@@ -6,15 +6,24 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-AGGREGATE_SCHEMA_VERSION = 1
+AGGREGATE_SCHEMA_VERSION = 2
 
 
 class Altitude(StrEnum):
     ic = "ic"
-    lead = "lead"
     manager = "manager"
-    director = "director"
     exec = "exec"
+
+    @classmethod
+    def from_str(cls, val: str) -> Altitude:
+        normalized = val.strip().lower()
+        if normalized in ("ic", "engineer", "dev", "tech"):
+            return cls.ic
+        if normalized in ("manager", "lead", "em"):
+            return cls.manager
+        if normalized in ("exec", "executive", "leadership", "director"):
+            return cls.exec
+        return cls(normalized)
 
 
 class AggregateClaimKind(StrEnum):
@@ -39,7 +48,7 @@ class AggregateClaim(BaseModel):
     text: str = Field(min_length=1)
     sources: list[str] = Field(
         min_length=1,
-        description="Opaque source claim tokens exactly as shown in the material.",
+        description="Opaque source PR tokens (e.g. PR-42) exactly as shown in the material.",
     )
 
 

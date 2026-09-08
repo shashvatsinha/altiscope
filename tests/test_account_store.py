@@ -102,10 +102,9 @@ def test_success_repair_failure_and_rerun(database: str, snapshot: PullRequestSn
             "SELECT narrative,schema_version,pull_request_id FROM pr_summaries WHERE id=%s",
             (second,),
         ).fetchone() == (published.output.review, 3, stored.id)
-        assert conn.execute(
-            "SELECT count(*) FROM pr_claims WHERE pr_summary_id=%s",
-            (second,),
-        ).fetchone() == (0,)
+        assert conn.execute("SELECT to_regclass('public.pr_claims') IS NOT NULL").fetchone() == (
+            False,
+        )
 
         saved_context = prepare(snapshot)
         restored = load_account_context(conn, stored.id, snapshot)

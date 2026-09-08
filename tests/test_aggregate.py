@@ -101,3 +101,55 @@ def test_coverage_names_uncited_inputs():
     assert cov.ratio == 0.5
     assert cov.is_low()
     assert not cov.is_low(threshold=0.5)
+
+
+def test_altitude_parsing_and_aliases():
+    from altiscope.schemas.aggregate import Altitude
+
+    assert Altitude.from_str("ic") == Altitude.ic
+    assert Altitude.from_str("engineer") == Altitude.ic
+    assert Altitude.from_str("dev") == Altitude.ic
+    assert Altitude.from_str("manager") == Altitude.manager
+    assert Altitude.from_str("lead") == Altitude.manager
+    assert Altitude.from_str("exec") == Altitude.exec
+    assert Altitude.from_str("executive") == Altitude.exec
+    assert Altitude.from_str("director") == Altitude.exec
+
+    with pytest.raises(ValueError):
+        Altitude.from_str("unknown_altitude")
+
+
+def test_aggregate_prompt_v2_loaded_as_latest():
+    from altiscope.prompts import latest_prompt
+    from tests.conftest import REPO_ROOT
+
+    prompt = latest_prompt(REPO_ROOT / "prompts", "aggregate")
+    assert prompt.version == "v2"
+    assert prompt.schema_version == 2
+    assert prompt.stage == "aggregate"
+    assert "Describe work, never people" in prompt.body
+    assert "PR-42" in prompt.body
+    assert "ic: Peer engineers" in prompt.body
+    assert "manager: Engineering managers" in prompt.body
+    assert "exec: Executive leadership" in prompt.body
+
+
+def test_aggregate_schema_v2_forbids_extra_fields():
+    import pydantic
+
+    from altiscope.schemas.aggregate import AGGREGATE_SCHEMA_VERSION, AggregateOutput
+
+    assert AGGREGATE_SCHEMA_VERSION == 2
+    payload = {
+        "headline": "New billing pipeline",
+        "claims": [
+            {"kind": "feature", "text": "Added retries", "sources": ["PR-1", "PR-2"]},
+        ],
+        "narrative": "Billing pipeline now retries on failure.",
+    }
+    parsed = AggregateOutput.model_validate(payload)
+    assert parsed.headline == "New billing pipeline"
+    assert parsed.claims[0].sources == ["PR-1", "PR-2"]
+
+    with pytest.raises(pydantic.ValidationError):
+        AggregateOutput.model_validate({**payload, "extra_field": "disallowed"})
