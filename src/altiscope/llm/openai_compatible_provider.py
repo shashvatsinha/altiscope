@@ -6,14 +6,14 @@ Declared capabilities select the mode:
 * prompt: include the schema in the prompt and validate locally.
 
 In the latter two modes, strip code fences before validation. A completed response with
-no parsed result is marked invalid_output. SDK exceptions can propagate; retry handling
-belongs to the caller and remains unbuilt. Compatibility depends on the endpoint.
+no parsed result is marked invalid_output. Expected output failures retain available
+metadata. SDK transport retries are bounded and separate from output repair.
+Compatibility depends on the endpoint.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 from typing import Any, TypeVar
@@ -22,6 +22,7 @@ import httpx
 import openai
 from pydantic import BaseModel, ValidationError
 
+from altiscope.llm.credentials import api_key as resolve_api_key
 from altiscope.llm.provider import GenerationResult, Usage
 from altiscope.llm.registry import ModelSpec, ProviderSpec
 from altiscope.llm.tokens import estimate_tokens
@@ -71,7 +72,7 @@ class OpenAICompatibleProvider:
         if client is not None:
             self._client = client
             return
-        api_key = os.environ.get(spec.api_key_env) if spec.api_key_env else None
+        api_key = resolve_api_key(spec.api_key_env)
         self._client = openai.OpenAI(
             # Local servers need no key but the SDK insists on a string.
             api_key=api_key or "not-needed",
@@ -81,6 +82,56 @@ class OpenAICompatibleProvider:
         )
 
     def generate_structured(
+        self,
+        *,
+        model: ModelSpec,
+        system: str,
+        user: str,
+        output_type: type[T],
+        max_tokens: int,
+        effort: Effort,
+    ) -> GenerationResult[T]:
+        started = time.monotonic()
+        try:
+            return self._generate(
+                model=model,
+                system=system,
+                user=user,
+                output_type=output_type,
+                max_tokens=max_tokens,
+                effort=effort,
+            )
+        except (
+            openai.LengthFinishReasonError,
+            openai.ContentFilterFinishReasonError,
+            ValidationError,
+            openai.APIError,
+        ) as exc:
+            stop = "invalid_output"
+            if isinstance(exc, openai.LengthFinishReasonError):
+                stop = "max_tokens"
+            elif isinstance(exc, openai.ContentFilterFinishReasonError):
+                stop = "refusal"
+            elif isinstance(exc, openai.APIError):
+                stop = "transport_error"
+            completion = getattr(exc, "completion", None)
+            usage = getattr(completion, "usage", None)
+            return GenerationResult(
+                parsed=None,
+                raw_text="",
+                model_id=model.wire_name,
+                stop_reason=stop,
+                usage=Usage(
+                    input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                    output_tokens=getattr(usage, "completion_tokens", 0) or 0,
+                ),
+                latency_ms=int((time.monotonic() - started) * 1000),
+                output_mode=model.structured_output_mode,
+                provider_request_id=getattr(exc, "request_id", None),
+                validation_error=type(exc).__name__,
+            )
+
+    def _generate(
         self,
         *,
         model: ModelSpec,
@@ -101,7 +152,7 @@ class OpenAICompatibleProvider:
 
         started = time.monotonic()
         if mode == "native":
-            completion = self._client.chat.completions.parse(
+            raw_response = self._client.chat.completions.with_raw_response.parse(
                 model=model.wire_name,
                 messages=[
                     {"role": "system", "content": system},
@@ -110,6 +161,35 @@ class OpenAICompatibleProvider:
                 response_format=output_type,
                 **kwargs,
             )
+            try:
+                completion = raw_response.parse()
+            except (
+                ValidationError,
+                openai.LengthFinishReasonError,
+                openai.ContentFilterFinishReasonError,
+            ) as exc:
+                payload = raw_response.http_response.json()
+                usage = payload.get("usage") or {}
+                choice_data = (payload.get("choices") or [{}])[0]
+                message = choice_data.get("message") or {}
+                stop = _FINISH_TO_STOP.get(choice_data.get("finish_reason") or "", "invalid_output")
+                if stop == "end_turn":
+                    stop = "invalid_output"
+                return GenerationResult(
+                    parsed=None,
+                    raw_text=message.get("content") or "",
+                    model_id=payload.get("model") or model.wire_name,
+                    stop_reason=stop,
+                    usage=Usage(
+                        usage.get("prompt_tokens", 0),
+                        usage.get("completion_tokens", 0),
+                        (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0),
+                    ),
+                    latency_ms=int((time.monotonic() - started) * 1000),
+                    output_mode=mode,
+                    provider_request_id=raw_response.headers.get("x-request-id"),
+                    validation_error=type(exc).__name__,
+                )
             choice = completion.choices[0]
             parsed: T | None = choice.message.parsed
             raw_text = choice.message.content or ""

@@ -10,7 +10,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="ALTISCOPE_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="ALTISCOPE_", env_file=".env", extra="ignore", env_ignore_empty=True
+    )
 
     database_url: str = "postgresql://altiscope:altiscope@localhost:5432/altiscope"
     github_api_base: str = "https://api.github.com"

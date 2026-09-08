@@ -1,6 +1,6 @@
 """Select a model by estimated input size and configured preference, and return a reason.
 
-Routing does not optimize cost. Saving the decision in llm_calls remains unbuilt.
+Routing does not optimize cost. The account store records the decision in llm_calls.
 See ADR-0005.
 """
 

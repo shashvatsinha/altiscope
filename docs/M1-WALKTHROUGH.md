@@ -1,0 +1,94 @@
+# Milestone 1 walkthrough
+
+Run commands from the repository root. Requires Python 3.11+, uv, and Docker Desktop
+for persisted workflows. Postgres 15+ may be supplied through `ALTISCOPE_DATABASE_URL`.
+
+```bash
+git clone https://github.com/shashvatsinha/altiscope.git
+cd altiscope
+# Until release, check out the milestone implementation branch.
+uv sync --extra dev --frozen
+uv run altiscope demo
+```
+
+The [checked-in sample](../examples/m1/README.md) is a synthetic source and hand-authored
+response, replayed through the normal generation/validation/rendering services.
+It makes no model call and needs no credentials. It is not a quality benchmark.
+
+## Persisted fixture workflow
+
+```bash
+docker compose up -d db
+uv run altiscope db migrate
+uv run altiscope demo --persist
+uv run altiscope show acme/widgets 42
+```
+
+The persisted demo uses the same snapshot and relational account storage as live input,
+with an explicitly recorded fixture provider. Repeating it preserves the source version,
+records another generation run, and selects one current account.
+
+## Selected public PR
+
+The live source selected for M1 is [Altiscope PR #2](https://github.com/shashvatsinha/altiscope/pull/2).
+Supply a GitHub PAT through `ALTISCOPE_GITHUB_TOKEN` in the environment or local `.env`;
+do not put tokens in command arguments or commit `.env`. Anonymous public reads also work
+with GitHub's lower rate limit. M1 rejects private repositories.
+
+```bash
+uv run altiscope ingest shashvatsinha/altiscope 2
+```
+
+Files, commits, reviews and both comment collections paginate fully. A count mismatch,
+changed PR during collection or exhausted retry budget fails ingestion without saving
+partial source. Missing patches remain visible as exclusions. Repeating unchanged
+collection reuses the source version; edits create an immutable new snapshot.
+
+For an opt-in live model smoke, configure `ANTHROPIC_API_KEY` locally, then:
+
+```bash
+export ALTISCOPE_MODELS_CONFIG=config/examples/m1.yaml
+uv run altiscope summarize shashvatsinha/altiscope 2
+uv run altiscope show shashvatsinha/altiscope 2
+```
+
+This sends the selected public PR to the configured provider and incurs its API cost.
+The smoke configuration uses `claude-sonnet-4-6`, native structured output and low-effort
+adaptive thinking. Model ID, capabilities and limits were checked on 2026-09-07 against
+[the provider model documentation](https://platform.claude.com/docs/en/models/sonnet-4-6/overview)
+and [structured output documentation](https://platform.claude.com/docs/en/build-with-claude/structured-outputs).
+The registry remains replaceable. This choice is not an evaluated model ranking.
+
+The report shows validated claims, evidence excerpts, computed facts and omissions.
+`citation_valid` does not mean semantically verified. Invalid output is repaired at most
+once; terminal failure is `needs_review`, with all generated account text withheld.
+A failed run does not replace an existing published account for the same snapshot.
+New source versions never silently reuse an older source's account.
+
+Set `ALTISCOPE_LLM_PAYLOAD_RETENTION=hashes_only` to retain request/response hashes rather
+than duplicate full LLM payloads. Source snapshots and published claims are still retained.
+Usage, selected configuration and available provider metadata remain recorded.
+
+## Validation
+
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run pyright
+ALTISCOPE_DATABASE_URL=postgresql://altiscope:altiscope@localhost:5432/altiscope uv run pytest
+uv run altiscope db migrate
+```
+
+Tests use fake providers and fake HTTP; no paid credentials are needed. Database tests
+exercise rollback, concurrent latest selection, compound comment identities, publication,
+repair, failed runs and retained historical output. Use a development/test database.
+
+## Limitations
+
+Pointer validation is not semantic verification. Prompts cannot guarantee absence of
+unsupported interpretation or an incorrectly repeated number. Language checks are
+heuristics. Token estimates include schema and request overhead but are not exact.
+Collection can miss edits that GitHub does not expose through its PR update timestamp;
+M1 does not provide a cross-endpoint transactional GitHub snapshot. Excluded patches can
+contain important work. No employee evaluation, UI, private ingestion, aggregation,
+background sync, or mandatory second-model review is included.

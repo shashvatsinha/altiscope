@@ -5,8 +5,19 @@ recorded in code changes and review discussions. Altiscope's hypothesis is that 
 records can support useful accounts at several levels of detail, with evidence that
 readers can inspect, at less total effort than preparing those accounts manually.
 
-**Early development.** The foundations exist; the complete system and user interface
-are still to be built.
+**Milestone 1 implementation is under review.** The CLI collects one public pull request,
+stores its source, generates evidence-bearing claims and shows computed facts and omissions.
+Interpretations are explicitly unverified.
+
+[Read the example account](examples/m1/README.md) · [Run the walkthrough](docs/M1-WALKTHROUGH.md)
+
+```bash
+uv sync --extra dev --frozen
+uv run altiscope demo
+```
+
+The credential-free demo uses a synthetic source and hand-authored recorded response.
+The walkthrough also covers Postgres, live public-PR ingestion and opt-in model calls.
 
 ## What it would look like
 
@@ -35,9 +46,9 @@ still need to be tested on real work.
 
 ## Explore or contribute
 
-The code includes the database design, reference checks, summary planning, and connections
-to AI models. Automatic GitHub collection, the complete reporting workflow, and the
-interface remain unfinished.
+The first workflow connects public-PR collection, immutable snapshots, provider-neutral
+generation, evidence checks and CLI inspection. Aggregation, semantic verification,
+organization access and a user interface remain future milestones.
 
 - [Thesis](THESIS.md): why this is worth trying and how to test it.
 - [Architecture](docs/ARCHITECTURE.md): how the parts fit together.

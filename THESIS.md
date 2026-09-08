@@ -41,8 +41,8 @@ The system would check that references match the saved source, then ask a second
 whether the evidence supports each statement. These are different checks: a real citation
 can accompany a mistaken interpretation. The second model can also be wrong.
 
-Evidence links currently belong to individual statements. Connecting every sentence in
-the final prose to those statements remains unresolved. The
+Milestone 1 displays only evidence-bearing statements and code-computed facts, with
+interpretations explicitly unverified. Richer prose reconciliation remains future work. The
 [architecture](docs/ARCHITECTURE.md#4-claims-and-validation) describes that limitation.
 
 ## What could make this fail
