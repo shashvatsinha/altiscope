@@ -64,6 +64,22 @@ at most once; terminal failure is `needs_review`. A failed run does not replace 
 existing published review for the same snapshot. Use `show --verbose` for stored
 snapshot/model provenance, facts and input omissions. No claim citations are required.
 
+## Direct Anthropic API
+
+Set `ANTHROPIC_API_KEY` in `.env` or the environment, then select the direct configuration:
+
+```bash
+export ALTISCOPE_MODELS_CONFIG=config/examples/anthropic.yaml
+uv run altiscope summarize shashvatsinha/altiscope 2
+uv run altiscope show --verbose shashvatsinha/altiscope 2
+```
+
+This uses the Anthropic SDK and API directly. The progress indicator and stored
+provenance show provider `anthropic` and model `claude-sonnet-5`. The example's model
+limits and prices follow [Anthropic's documentation](https://platform.claude.com/docs/en/models/sonnet-5/whats-new-sonnet-5).
+The default registry also includes `anthropic-sonnet`; add it to a stage's candidates
+to select it in a custom configuration. OpenRouter remains the default route.
+
 ## OpenRouter
 
 Your `OPENROUTER_API_KEY` can select any configured model family. Set the configuration
