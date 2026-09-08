@@ -6,6 +6,11 @@
 # intended for reporting; routing uses capacity and configured preference.
 
 providers:
+  anthropic:
+    kind: anthropic
+    base_url: https://api.anthropic.com
+    api_key_env: ANTHROPIC_API_KEY
+    timeout_seconds: 120
   openrouter:
     kind: openai_compatible
     base_url: https://openrouter.ai/api/v1
@@ -13,6 +18,15 @@ providers:
     timeout_seconds: 120
 
 models:
+  anthropic-sonnet:
+    provider: anthropic
+    model_name: claude-sonnet-5
+    display_name: Claude Sonnet 5 via Anthropic
+    context_window: 1000000
+    max_output_tokens: 128000
+    input_usd_per_mtok: 2
+    output_usd_per_mtok: 10
+    capabilities: [json_schema, reasoning_effort, token_counting]
   openrouter-anthropic:
     provider: openrouter
     model_name: anthropic/claude-sonnet-5

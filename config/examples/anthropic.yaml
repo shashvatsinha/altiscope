@@ -1,0 +1,29 @@
+# Direct Anthropic API. Requires ANTHROPIC_API_KEY in the environment or .env.
+providers:
+  anthropic:
+    kind: anthropic
+    base_url: https://api.anthropic.com
+    api_key_env: ANTHROPIC_API_KEY
+    timeout_seconds: 120
+models:
+  anthropic-sonnet:
+    provider: anthropic
+    model_name: claude-sonnet-5
+    display_name: Claude Sonnet 5 via Anthropic
+    context_window: 1000000
+    max_output_tokens: 128000
+    input_usd_per_mtok: 2
+    output_usd_per_mtok: 10
+    capabilities: [json_schema, reasoning_effort, token_counting]
+input_budget_fraction: 0.75
+stages:
+  pr_summary:
+    candidates: [anthropic-sonnet]
+    effort: low
+    reserved_output_tokens: 4096
+  aggregate:
+    candidates: [anthropic-sonnet]
+    reserved_output_tokens: 4096
+  verify:
+    candidates: [anthropic-sonnet]
+    reserved_output_tokens: 4096
