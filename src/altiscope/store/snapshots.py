@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 import psycopg
@@ -165,3 +166,44 @@ def load_snapshot(conn: psycopg.Connection, repository: str, number: int) -> Sto
     if row is None:
         raise ValueError("PR has not been ingested")
     return StoredSnapshot(int(row[0]), int(row[1]), PullRequestSnapshot.model_validate(row[2]))
+
+
+def load_snapshots_in_window(
+    conn: psycopg.Connection,
+    repository: str,
+    since: datetime,
+    until: datetime,
+) -> list[StoredSnapshot]:
+    owner, name = repository.split("/")
+    since_utc = since if since.tzinfo is not None else since.replace(tzinfo=UTC)
+    until_utc = until if until.tzinfo is not None else until.replace(tzinfo=UTC)
+    rows = conn.execute(
+        "SELECT p.id, p.snapshot_version, p.normalized_snapshot FROM pull_requests p "
+        "JOIN repositories r ON r.id=p.repository_id "
+        "WHERE r.owner=%s AND r.name=%s "
+        "AND p.state='merged' AND p.merged_at >= %s AND p.merged_at <= %s "
+        "AND p.is_latest_snapshot "
+        "ORDER BY p.merged_at ASC, p.number ASC",
+        (owner, name, since_utc, until_utc),
+    ).fetchall()
+    return [
+        StoredSnapshot(int(r[0]), int(r[1]), PullRequestSnapshot.model_validate(r[2])) for r in rows
+    ]
+
+
+def find_missing_pr_numbers(
+    conn: psycopg.Connection,
+    repository: str,
+    pr_numbers: list[int],
+) -> list[int]:
+    if not pr_numbers:
+        return []
+    owner, name = repository.split("/")
+    rows = conn.execute(
+        "SELECT p.number FROM pull_requests p "
+        "JOIN repositories r ON r.id=p.repository_id "
+        "WHERE r.owner=%s AND r.name=%s AND p.number = ANY(%s) AND p.is_latest_snapshot",
+        (owner, name, pr_numbers),
+    ).fetchall()
+    existing = {int(r[0]) for r in rows}
+    return [n for n in pr_numbers if n not in existing]

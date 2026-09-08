@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC
 from typing import Any
 
 import httpx
@@ -147,3 +148,59 @@ def test_count_mismatch_fails_before_snapshot_creation():
         pytest.raises(CollectionError, match="counts disagree"),
     ):
         PatClient(None, client=http).fetch_pull_request("owner/repo", 1)
+
+
+def test_list_merged_pull_requests_in_window():
+    from datetime import datetime
+
+    repo_payload = {"id": 1, "default_branch": "main", "visibility": "public"}
+    pulls_page1 = [
+        {
+            "number": 10,
+            "merged_at": "2026-06-15T10:00:00Z",
+            "updated_at": "2026-06-15T10:00:00Z",
+        },
+        {
+            "number": 9,
+            "merged_at": "2026-06-05T10:00:00Z",
+            "updated_at": "2026-06-05T10:00:00Z",
+        },
+        {
+            "number": 8,
+            "merged_at": None,  # closed without merge
+            "updated_at": "2026-06-02T10:00:00Z",
+        },
+        {
+            "number": 7,
+            "merged_at": "2026-05-15T10:00:00Z",
+            "updated_at": "2026-05-15T10:00:00Z",  # before window, stops pagination
+        },
+    ]
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/repos/owner/repo":
+            return httpx.Response(200, json=repo_payload)
+        if request.url.path == "/repos/owner/repo/pulls":
+            return httpx.Response(200, json=pulls_page1)
+        return httpx.Response(404)
+
+    with httpx.Client(
+        base_url="https://api.github.com", transport=httpx.MockTransport(handle)
+    ) as http:
+        client = PatClient(None, client=http)
+        since = datetime(2026, 6, 1, tzinfo=UTC)
+        until = datetime(2026, 6, 30, tzinfo=UTC)
+        numbers = client.list_merged_pull_requests("owner/repo", since, until)
+        assert numbers == [9, 10]  # sorted ascending by merged_at
+
+        # Empty window test
+        empty_numbers = client.list_merged_pull_requests(
+            "owner/repo",
+            datetime(2026, 7, 1, tzinfo=UTC),
+            datetime(2026, 7, 31, tzinfo=UTC),
+        )
+        assert empty_numbers == []
+
+        # until < since raises ValueError
+        with pytest.raises(ValueError, match="until must be greater"):
+            client.list_merged_pull_requests("owner/repo", until, since)
