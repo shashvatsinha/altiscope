@@ -114,6 +114,7 @@ def ingest(repository: str, number: int) -> None:
     settings = load_settings()
     client = PatClient(settings.github_token, base_url=settings.github_api_base)
     try:
+        typer.echo(f"Collecting {repository}#{number} from GitHub ...", err=True)
         snapshot = client.fetch_pull_request(repository, number)
         with connect(settings.database_url) as conn:
             stored = save_snapshot(
@@ -142,10 +143,16 @@ def summarize(repository: str, number: int) -> None:
     settings = load_settings()
     with connect(settings.database_url) as conn:
         stored = load_snapshot(conn, repository, number)
+        registry = Registry.load(settings.models_config)
+        typer.echo(
+            f"Summarizing {repository}#{number} via {registry.stages['pr_summary'].candidates[0]} "
+            f"({registry.provider_for(registry.stages['pr_summary'].candidates[0]).name}) ...",
+            err=True,
+        )
         summary_id = run_summary(
             conn,
             stored,
-            registry=Registry.load(settings.models_config),
+            registry=registry,
             prompt=latest_prompt(settings.prompts_dir, "pr_summary"),
             retention=settings.llm_payload_retention,
         )
