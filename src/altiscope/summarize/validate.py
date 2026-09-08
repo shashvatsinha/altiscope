@@ -100,6 +100,11 @@ def _check_evidence(ev: Evidence, ctx: PrContext, where: str) -> str | None:
 def validate_summary(output: PrSummaryOutput | PrAccountOutput, ctx: PrContext) -> ValidationResult:
     result = ValidationResult()
     for i, claim in enumerate(output.claims, start=1):
+        if not any(ev.type in (EvidenceType.file, EvidenceType.hunk) for ev in claim.evidence):
+            result.errors.append(
+                f"claim {i}: must cite at least one included file or diff hunk; "
+                "PR prose alone cannot establish a code change"
+            )
         for j, ev in enumerate(claim.evidence, start=1):
             error = _check_evidence(ev, ctx, where=f"claim {i} evidence {j}")
             if error:

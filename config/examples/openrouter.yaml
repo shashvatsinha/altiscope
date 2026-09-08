@@ -1,17 +1,12 @@
-# Providers, models, and stage preferences. See docs/adr/0005-model-registry-routing.md.
-# Endpoint compatibility and output quality need testing before choosing defaults.
-# Example configurations are in config/examples/.
-#
-# Confirm context limits and prices before use. Prices are USD per million tokens,
-# intended for reporting; routing uses capacity and configured preference.
-
+# OpenRouter-only registry. Requires OPENROUTER_API_KEY in .env.
+# Select the model family by changing the pr_summary candidate (or use one of the
+# narrower openrouter-anthropic.yaml/openrouter-openai.yaml examples).
 providers:
   openrouter:
     kind: openai_compatible
     base_url: https://openrouter.ai/api/v1
     api_key_env: OPENROUTER_API_KEY
     timeout_seconds: 120
-
 models:
   openrouter-anthropic:
     provider: openrouter
@@ -40,26 +35,15 @@ models:
     input_usd_per_mtok: 0.3
     output_usd_per_mtok: 2.5
     capabilities: [json_schema]
-
-# Scale the context window by this fraction, then subtract the stage's reserved
-# output tokens to get the input budget. Request-size estimates need to include overhead.
 input_budget_fraction: 0.75
-
 stages:
-  # Describe the selected material from one PR as claims with evidence.
   pr_summary:
     candidates: [openrouter-anthropic]
-    effort: high
-    reserved_output_tokens: 16000
-  # Combine PR summaries or child aggregates into one account.
+    effort: low
+    reserved_output_tokens: 4096
   aggregate:
     candidates: [openrouter-anthropic]
-    effort: high
-    reserved_output_tokens: 16000
-  # Review one claim against its evidence. "model" skips the producing model;
-  # "provider" skips every model on its configured provider.
+    reserved_output_tokens: 4096
   verify:
-    candidates: [openrouter-anthropic, openrouter-openai]
-    effort: high
-    reserved_output_tokens: 4000
-    producer_independence: model
+    candidates: [openrouter-anthropic]
+    reserved_output_tokens: 4096

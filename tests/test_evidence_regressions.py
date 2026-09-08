@@ -43,6 +43,7 @@ def test_comment_ids_are_scoped_by_kind(snapshot: PullRequestSnapshot):
 def test_quotes_collapse_whitespace_but_preserve_case(snapshot: PullRequestSnapshot):
     output = good_output()
     output.claims[0].evidence = [
-        Evidence(type=EvidenceType.description, quote="Wraps\nrun() in a lock")
+        Evidence(type=EvidenceType.description, quote="Wraps\nrun() in a lock"),
+        Evidence(type=EvidenceType.file, path="app/main.py", quote="def run()"),
     ]
     assert validate_summary(output, make_context(snapshot)).ok

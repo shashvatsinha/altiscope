@@ -153,7 +153,13 @@ def summarize(repository: str, number: int) -> None:
 
 
 @app.command()
-def show(repository: str, number: int) -> None:
+def show(
+    repository: str,
+    number: int,
+    verbose: Annotated[
+        bool, typer.Option(help="Show evidence, provenance, facts, and omissions")
+    ] = False,
+) -> None:
     """Inspect the latest snapshot's account, sources, computed facts and omissions."""
     from altiscope.store.accounts import account_provenance, load_account, load_account_context
     from altiscope.store.db import connect
@@ -166,9 +172,10 @@ def show(repository: str, number: int) -> None:
         ctx = load_account_context(conn, stored.id, stored.snapshot)
         publication = load_account(conn, stored.id, ctx)
         provenance = account_provenance(conn, stored.id)
-    typer.echo(f"Snapshot version: {stored.version}; id: {stored.id}")
-    typer.echo(provenance)
-    typer.echo(render_account(publication, ctx), nl=False)
+    if verbose:
+        typer.echo(f"Snapshot version: {stored.version}; id: {stored.id}")
+        typer.echo(provenance)
+    typer.echo(render_account(publication, ctx, verbose=verbose), nl=False)
 
 
 @app.command()

@@ -201,8 +201,7 @@ def save_account(
 
 def load_account(conn: psycopg.Connection, snapshot_id: int, ctx: PrContext) -> Publication:
     row = conn.execute(
-        "SELECT id,status FROM pr_summaries WHERE pull_request_id=%s "
-        "ORDER BY is_current DESC,id DESC LIMIT 1",
+        "SELECT id,status FROM pr_summaries WHERE pull_request_id=%s ORDER BY id DESC LIMIT 1",
         (snapshot_id,),
     ).fetchone()
     if row is None:
@@ -244,7 +243,7 @@ def account_provenance(conn: psycopg.Connection, snapshot_id: int) -> str:
         "SELECT c.provider,c.model_id,p.name,p.content_hash,s.schema_version "
         "FROM pr_summaries s JOIN llm_calls c ON c.id=s.llm_call_id "
         "JOIN prompt_versions p ON p.id=s.prompt_version_id "
-        "WHERE s.pull_request_id=%s ORDER BY s.is_current DESC,s.id DESC LIMIT 1",
+        "WHERE s.pull_request_id=%s ORDER BY s.id DESC LIMIT 1",
         (snapshot_id,),
     ).fetchone()
     if row is None:
@@ -265,7 +264,7 @@ def load_account_context(
     """Use the published facts and manifest, not today's potentially changed policy."""
     row = conn.execute(
         "SELECT facts,input_manifest FROM pr_summaries WHERE pull_request_id=%s "
-        "ORDER BY is_current DESC,id DESC LIMIT 1",
+        "ORDER BY id DESC LIMIT 1",
         (snapshot_id,),
     ).fetchone()
     if row is None:

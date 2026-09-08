@@ -61,9 +61,13 @@ def test_context_assigns_opaque_comment_tokens_in_time_order(snapshot: PullReque
     assert ctx.comment_tokens == {"c1": ("review", 501), "c2": ("issue", 502)}
     prompt = render_user_prompt(ctx)
     assert "<comment id=c1 kind=review author=bob on app/main.py:3>" in prompt
+    assert "# 3. Code changes (primary evidence)" in prompt
+    assert prompt.index("# 4. Patches of included files") < prompt.index(
+        "# 5. Pull request context"
+    )
     assert "package-lock.json [lockfile] +400/-380" in prompt
     assert "<file path='app/main.py'>" in prompt
-    assert "501" not in prompt.split("# 5.")[1]  # no GitHub ids leak into the material
+    assert "501" not in prompt.split("# 6.")[1]  # no GitHub ids leak into the material
 
 
 def test_valid_summary_passes(snapshot: PullRequestSnapshot):

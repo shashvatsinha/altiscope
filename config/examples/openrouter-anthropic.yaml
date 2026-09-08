@@ -1,4 +1,4 @@
-# M1 opt-in live smoke configuration through OpenRouter only.
+# OpenRouter using an Anthropic model. Requires OPENROUTER_API_KEY in .env.
 providers:
   openrouter:
     kind: openai_compatible

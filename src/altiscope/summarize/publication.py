@@ -33,7 +33,7 @@ def assess(output: PrAccountOutput | None, ctx: PrContext) -> Publication:
     return Publication(PublicationState.citation_valid, output, ())
 
 
-def render_account(publication: Publication, ctx: PrContext) -> str:
+def render_account(publication: Publication, ctx: PrContext, *, verbose: bool = False) -> str:
     # Revalidate at the presentation boundary; callers cannot label arbitrary text valid.
     checked = assess(publication.output, ctx)
     lines = [f"PR {ctx.snapshot.repository}#{ctx.snapshot.number}", ctx.snapshot.html_url]
@@ -41,6 +41,8 @@ def render_account(publication: Publication, ctx: PrContext) -> str:
     if checked.output is not None and publication.state == PublicationState.citation_valid:
         for ordinal, claim in enumerate(checked.output.claims, 1):
             lines.append(f"\n{ordinal}. {claim.text}")
+            if not verbose:
+                continue
             for evidence in claim.evidence:
                 lines.append(f"   Evidence: {evidence.model_dump_json(exclude_none=True)}")
                 if evidence.path:
@@ -61,7 +63,11 @@ def render_account(publication: Publication, ctx: PrContext) -> str:
                 lines.extend(f"   | {line}" for line in excerpt.splitlines())
     else:
         lines.append("Generated account withheld pending review.")
-    lines.extend(["\nComputed facts:", ctx.facts.model_dump_json(indent=2)])
-    lines.extend(["\nInput omissions:", ctx.manifest.model_dump_json(indent=2)])
-    lines.append("Citation checks establish source membership, not semantic support.")
+        if verbose and checked.errors:
+            lines.append("Validation errors:")
+            lines.extend(f"- {error}" for error in checked.errors)
+    if verbose:
+        lines.extend(["\nComputed facts:", ctx.facts.model_dump_json(indent=2)])
+        lines.extend(["\nInput omissions:", ctx.manifest.model_dump_json(indent=2)])
+        lines.append("Citation checks establish source membership, not semantic support.")
     return "\n".join(lines) + "\n"

@@ -23,12 +23,13 @@ def test_persisted_demo_and_show(database: str, monkeypatch: pytest.MonkeyPatch)
     runner = CliRunner()
     result = runner.invoke(app, ["demo", "--persist"])
     assert result.exit_code == 0, result.exception
-    shown = runner.invoke(app, ["show", "acme/widgets", "42"])
+    shown = runner.invoke(app, ["show", "--verbose", "acme/widgets", "42"])
     assert shown.exit_code == 0, shown.exception
     assert "Provider: fixture" in shown.output
     assert "interpretation unverified" in shown.output
     assert "run() acquires a module-level lock." in shown.output
-    assert "package-lock.json" in shown.output
+    verbose = runner.invoke(app, ["show", "--verbose", "acme/widgets", "42"])
+    assert "package-lock.json" in verbose.output
 
 
 @pytest.mark.integration

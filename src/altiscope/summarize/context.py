@@ -65,22 +65,28 @@ def render_user_prompt(ctx: PrContext) -> str:
     else:
         parts.append("\nNo files were excluded.")
 
-    parts.append("\n\n# 3. Pull request\n")
-    parts.append(f"Repository: {s.repository}  Number: #{s.number}  Base: {s.base_ref}")
-    parts.append(f"Title: {s.title}")
-    parts.append("Description (verbatim):")
-    parts.append("<description>")
-    parts.append(s.body if s.body.strip() else "(empty)")
-    parts.append("</description>")
+    parts.append("\n\n# 3. Code changes (primary evidence)\n")
+    parts.append(
+        "Use the included patches below as the primary evidence for what changed. "
+        "A PR description or comment can explain intent, but cannot establish that code changed."
+    )
 
-    parts.append("\n\n# 4. Patches of included files\n")
+    parts.append("\n\n# 4. Patches of included files (primary source)\n")
     for path in ctx.manifest.included_paths:
         patch = ctx.patch_for(path)
         parts.append(f"<file path={path!r}>")
         parts.append(patch or "")
         parts.append("</file>")
 
-    parts.append("\n\n# 5. Commits, reviews and comments\n")
+    parts.append("\n\n# 5. Pull request context\n")
+    parts.append(f"Repository: {s.repository}  Number: #{s.number}  Base: {s.base_ref}")
+    parts.append(f"Title: {s.title}")
+    parts.append("Description (verbatim; context, not proof of code change):")
+    parts.append("<description>")
+    parts.append(s.body if s.body.strip() else "(empty)")
+    parts.append("</description>")
+
+    parts.append("\n\n# 6. Commits, reviews and comments\n")
     parts.append("Commits:")
     parts.extend(f"- {c.sha}: {c.message.splitlines()[0] if c.message else ''}" for c in s.commits)
     parts.append("\nReviews:")

@@ -22,6 +22,8 @@ docker compose up -d db
 uv run altiscope db migrate
 uv run altiscope demo --persist
 uv run altiscope show acme/widgets 42
+# The default is concise. Add --verbose for evidence, provenance, facts, and omissions.
+uv run altiscope show --verbose acme/widgets 42
 ```
 
 The persisted demo uses the same snapshot and relational account storage as live input,
@@ -44,7 +46,7 @@ changed PR during collection or exhausted retry budget fails ingestion without s
 partial source. Missing patches remain visible as exclusions. Repeating unchanged
 collection reuses the source version; edits create an immutable new snapshot.
 
-For an opt-in live model smoke, configure `ANTHROPIC_API_KEY` locally, then:
+For an opt-in live model smoke, configure `OPENROUTER_API_KEY` in `.env`, then:
 
 ```bash
 export ALTISCOPE_MODELS_CONFIG=config/examples/m1.yaml
@@ -52,17 +54,33 @@ uv run altiscope summarize shashvatsinha/altiscope 2
 uv run altiscope show shashvatsinha/altiscope 2
 ```
 
-This sends the selected public PR to the configured provider and incurs its API cost.
-The smoke configuration uses `claude-sonnet-4-6`, native structured output and low-effort
-adaptive thinking. Model ID, capabilities and limits were checked on 2026-09-07 against
-[the provider model documentation](https://platform.claude.com/docs/en/models/sonnet-4-6/overview)
-and [structured output documentation](https://platform.claude.com/docs/en/build-with-claude/structured-outputs).
-The registry remains replaceable. This choice is not an evaluated model ranking.
+This sends the selected public PR to OpenRouter and incurs its API cost. The M1 example
+uses Claude Sonnet through OpenRouter's OpenAI-compatible endpoint. The registry remains
+replaceable; this choice is not an evaluated model ranking.
 
 The report shows validated claims, evidence excerpts, computed facts and omissions.
 `citation_valid` does not mean semantically verified. Invalid output is repaired at most
 once; terminal failure is `needs_review`, with all generated account text withheld.
 A failed run does not replace an existing published account for the same snapshot.
+
+## OpenRouter
+
+Your `OPENROUTER_API_KEY` can select any configured model family. Set the configuration
+file before running `summarize`:
+
+```bash
+export ALTISCOPE_MODELS_CONFIG=config/examples/openrouter-anthropic.yaml
+uv run altiscope summarize shashvatsinha/altiscope 2
+
+export ALTISCOPE_MODELS_CONFIG=config/examples/openrouter-openai.yaml
+uv run altiscope summarize shashvatsinha/altiscope 2
+```
+
+Both configurations use OpenRouter's OpenAI-compatible endpoint and JSON Schema output.
+The Anthropic example uses `anthropic/claude-sonnet-5`; the OpenAI example uses
+`openai/gpt-5.5`. OpenRouter's model catalog and structured-output support can change;
+replace the model ID and limits in the example if your account exposes a different model.
+The key is read from `.env` and never included in request provenance.
 New source versions never silently reuse an older source's account.
 
 Set `ALTISCOPE_LLM_PAYLOAD_RETENTION=hashes_only` to retain request/response hashes rather
