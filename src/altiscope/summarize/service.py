@@ -13,14 +13,14 @@ from altiscope.llm.router import route
 from altiscope.prompts import Prompt
 from altiscope.store.accounts import save_account
 from altiscope.store.snapshots import StoredSnapshot
-from altiscope.summarize.context import PrContext, build_context, render_user_prompt
+from altiscope.summarize.context import PrContext, render_user_prompt
 from altiscope.summarize.facts import compute_facts
 from altiscope.summarize.generate import generate_account, request_tokens
 
 
 def prepare(snapshot: PullRequestSnapshot) -> PrContext:
     outcome = apply(snapshot.files)
-    return build_context(snapshot, outcome, compute_facts(snapshot, outcome), manifest(outcome))
+    return PrContext(snapshot, compute_facts(snapshot, outcome), manifest(outcome))
 
 
 def summarize(

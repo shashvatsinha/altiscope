@@ -10,8 +10,8 @@ from altiscope.llm.providers import ProviderPool
 from altiscope.llm.registry import Registry
 from altiscope.prompts import latest_prompt
 from altiscope.summarize.generate import generate_account
+from altiscope.summarize.service import prepare
 from tests.conftest import REPO_ROOT
-from tests.test_summarize import make_context
 
 
 def test_direct_anthropic_review_from_config(
@@ -51,7 +51,7 @@ def test_direct_anthropic_review_from_config(
     pool = ProviderPool(registry)
     provider = pool.for_model(model.id)
     generated = generate_account(
-        make_context(snapshot),
+        prepare(snapshot),
         provider,
         model,
         system=latest_prompt(REPO_ROOT / "prompts", "pr_summary").body,

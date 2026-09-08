@@ -1,15 +1,11 @@
-"""Prepare model input for one pull request and maps for checking comment references.
-
-Comments use per-call tokens (c1, c2, ...) mapped to (kind, GitHub ID). The validator rejects
-unknown tokens. Files use paths and commits use SHA prefixes checked against the snapshot.
-"""
+"""Prepare deterministic code-first model input for one pull request."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from altiscope.ingest.diff_policy import InputManifest, PolicyOutcome
-from altiscope.ingest.snapshot import CommentKind, PullRequestSnapshot
+from altiscope.ingest.diff_policy import InputManifest
+from altiscope.ingest.snapshot import PullRequestSnapshot
 from altiscope.summarize.facts import PrFacts
 
 
@@ -18,28 +14,12 @@ class PrContext:
     snapshot: PullRequestSnapshot
     facts: PrFacts
     manifest: InputManifest
-    outcome: PolicyOutcome
-    comment_tokens: dict[str, tuple[CommentKind, int]] = field(default_factory=dict)
-
-    @property
-    def included_paths(self) -> set[str]:
-        return {d.path for d in self.outcome.included}
 
     def patch_for(self, path: str) -> str | None:
         for f in self.snapshot.files:
             if f.path == path:
                 return f.patch
         return None
-
-
-def build_context(
-    snapshot: PullRequestSnapshot, outcome: PolicyOutcome, facts: PrFacts, manifest: InputManifest
-) -> PrContext:
-    ordered = sorted(snapshot.comments, key=lambda c: (c.created_at, c.kind, c.github_id))
-    tokens = {f"c{i}": (c.kind, c.github_id) for i, c in enumerate(ordered, start=1)}
-    return PrContext(
-        snapshot=snapshot, facts=facts, manifest=manifest, outcome=outcome, comment_tokens=tokens
-    )
 
 
 def render_user_prompt(ctx: PrContext) -> str:
@@ -98,12 +78,10 @@ def render_user_prompt(ctx: PrContext) -> str:
     else:
         parts.append("- (none)")
     parts.append("\nComments:")
-    by_id = {(c.kind, c.github_id): c for c in s.comments}
-    if ctx.comment_tokens:
-        for token, identity in ctx.comment_tokens.items():
-            c = by_id[identity]
+    if s.comments:
+        for c in sorted(s.comments, key=lambda c: (c.created_at, c.kind, c.github_id)):
             where = f" on {c.path}:{c.line}" if c.path else ""
-            parts.append(f"<comment id={token} kind={c.kind.value} author={c.author_login}{where}>")
+            parts.append(f"<comment kind={c.kind.value} author={c.author_login}{where}>")
             parts.append(c.body)
             parts.append("</comment>")
     else:

@@ -4,15 +4,15 @@ from pydantic import ValidationError
 from altiscope.ingest.snapshot import PullRequestSnapshot
 from altiscope.schemas.pr_summary import PrReviewOutput
 from altiscope.summarize.publication import Publication, PublicationState, assess, render_account
-from tests.test_summarize import make_context
+from altiscope.summarize.service import prepare
 
 
 def test_review_needs_no_citations_and_links_to_pr(snapshot: PullRequestSnapshot):
     output = PrReviewOutput(
         review="The patch adds locking. Its test does not exercise concurrency."
     )
-    ctx = make_context(snapshot)
-    publication = assess(output, ctx)
+    ctx = prepare(snapshot)
+    publication = assess(output)
     report = render_account(publication, ctx)
     assert publication.state == PublicationState.published
     assert output.review in report
@@ -36,6 +36,6 @@ def test_model_cannot_supply_provenance():
 
 def test_failed_review_displays_reason(snapshot: PullRequestSnapshot):
     publication = Publication(PublicationState.needs_review, None, ("max_tokens",))
-    report = render_account(publication, make_context(snapshot))
+    report = render_account(publication, prepare(snapshot))
     assert "Reason: max_tokens" in report
     assert "Generated review unavailable" in report

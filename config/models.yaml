@@ -60,7 +60,7 @@ models:
 input_budget_fraction: 0.75
 
 stages:
-  # Describe the selected material from one PR as claims with evidence.
+  # Review the code changes from one PR; the application attaches PR provenance.
   pr_summary:
     candidates: [openrouter-anthropic]
     effort: high
@@ -70,7 +70,7 @@ stages:
     candidates: [openrouter-anthropic]
     effort: high
     reserved_output_tokens: 16000
-  # Review one claim against its evidence. "model" skips the producing model;
+  # Reserved for future overall-review assessment. "model" skips the producing model;
   # "provider" skips every model on its configured provider.
   verify:
     candidates: [openrouter-anthropic, openrouter-openai]

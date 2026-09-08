@@ -10,14 +10,14 @@ from uuid import uuid4
 import psycopg
 from psycopg.types.json import Jsonb
 
-from altiscope.ingest.diff_policy import FileDecision, InputManifest, PolicyOutcome
+from altiscope.ingest.diff_policy import InputManifest
 from altiscope.ingest.snapshot import PullRequestSnapshot
 from altiscope.llm.registry import Registry
 from altiscope.llm.router import RoutingDecision
 from altiscope.prompts import Prompt
 from altiscope.schemas.pr_summary import PrReviewOutput
 from altiscope.store.snapshots import insert
-from altiscope.summarize.context import PrContext, build_context
+from altiscope.summarize.context import PrContext
 from altiscope.summarize.facts import PrFacts
 from altiscope.summarize.generate import GeneratedAccount, request_tokens
 from altiscope.summarize.publication import Publication, PublicationState, assess
@@ -121,7 +121,7 @@ def save_account(
                     finished_at=attempt.finished_at,
                 ),
             )
-        checked = assess(generated.publication.output, ctx)
+        checked = assess(generated.publication.output)
         published = checked.state == PublicationState.published
         # A failed rerun must not replace the current published account.
         if published:
@@ -166,7 +166,7 @@ def load_account(conn: psycopg.Connection, snapshot_id: int, ctx: PrContext) -> 
             None,
             (f"Generated account withheld: {provider}/{model_id}: {detail}",),
         )
-    return assess(PrReviewOutput(review=row[6]), ctx)
+    return assess(PrReviewOutput(review=row[6]))
 
 
 def account_provenance(conn: psycopg.Connection, snapshot_id: int) -> str:
@@ -202,16 +202,4 @@ def load_account_context(
         raise ValueError("No account exists; run summarize first")
     facts = PrFacts.model_validate(row[0])
     manifest = InputManifest.model_validate(row[1])
-    exclusions = {item.path: item.reason for item in manifest.excluded}
-    decisions = [
-        FileDecision(
-            path=file.path,
-            included=file.path in manifest.included_paths,
-            reason=exclusions.get(file.path),
-            additions=file.additions,
-            deletions=file.deletions,
-            patch_bytes=len((file.patch or "").encode()),
-        )
-        for file in snapshot.files
-    ]
-    return build_context(snapshot, PolicyOutcome(decisions), facts, manifest)
+    return PrContext(snapshot, facts, manifest)

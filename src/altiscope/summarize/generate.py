@@ -48,7 +48,7 @@ def generate_account(
 ) -> GeneratedAccount:
     user = render_user_prompt(ctx)
     attempts: list[Attempt] = []
-    publication = assess(None, ctx)
+    publication = assess(None)
     for _ in range(2):
         if request_tokens(system, user) > input_budget:
             return GeneratedAccount(
@@ -68,7 +68,7 @@ def generate_account(
             max_tokens=max_tokens,
             effort=effort,
         )
-        publication = assess(result.parsed if result.ok else None, ctx)
+        publication = assess(result.parsed if result.ok else None)
         errors = publication.errors if result.ok else (result.stop_reason,)
         if not result.ok:
             publication = Publication(PublicationState.needs_review, None, errors)

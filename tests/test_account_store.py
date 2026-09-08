@@ -9,7 +9,7 @@ from altiscope.ingest.snapshot import PullRequestSnapshot
 from altiscope.llm.registry import Registry
 from altiscope.prompts import latest_prompt
 from altiscope.schemas.pr_summary import PrReviewOutput
-from altiscope.store.accounts import load_account
+from altiscope.store.accounts import load_account, load_account_context
 from altiscope.store.snapshots import save_snapshot
 from altiscope.summarize.fixture import FixtureProvider
 from altiscope.summarize.publication import PublicationState
@@ -106,3 +106,9 @@ def test_success_repair_failure_and_rerun(database: str, snapshot: PullRequestSn
             "SELECT count(*) FROM pr_claims WHERE pr_summary_id=%s",
             (second,),
         ).fetchone() == (0,)
+
+        saved_context = prepare(snapshot)
+        restored = load_account_context(conn, stored.id, snapshot)
+        assert restored.facts == saved_context.facts
+        assert restored.manifest == saved_context.manifest
+        assert restored.snapshot == snapshot

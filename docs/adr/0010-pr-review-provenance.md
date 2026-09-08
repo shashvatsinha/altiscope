@@ -30,6 +30,32 @@ snapshot and recorded model call. No new claim/evidence rows are needed. Histori
 are discarded; no old-format reader or migration of their content is needed.
 A failed rerun does not displace a published review.
 
+## Deferred database cleanup
+
+The application cleanup removes obsolete PR claim schemas and citation validation,
+but deliberately leaves the database schema and existing data unchanged. The unused
+`pr_claims` and `pr_claim_evidence` tables are retained temporarily, not as a commitment
+to restore claim-level citations or assessment.
+
+Before implementing aggregation, independent review assessment, or feedback storage,
+revisit the claim-based structures in `migrations/0001_initial.sql`:
+
+- `pr_claim_evidence` references `pr_claims`.
+- `aggregate_claim_sources.pr_claim_id`, `verifications.pr_claim_id`, and
+  `flags.pr_claim_id` also reference `pr_claims`.
+- Their foreign keys, exactly-one-source checks, unique constraints, and indexes
+  must be addressed explicitly when removing or replacing those references.
+
+Use a new numbered migration; do not edit applied migrations or use an indiscriminate
+`DROP ... CASCADE`. Decide which unused structures to remove and which to redesign
+around PR reviews. Any future independent assessment targets an overall review,
+not individual claims. Preserve active PR-review-to-snapshot and model-call links,
+including published text, saved facts, and input manifests.
+
+Validate both fresh database setup and upgrades from the existing schema. Update
+schema tests that currently enforce claim-based relationships as part of that migration.
+This note does not authorize data deletion or prescribe the future feature schema.
+
 ## Acceptance
 
 Exercise collection, review generation, persistence and inspection. Verify the PR
