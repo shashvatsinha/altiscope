@@ -140,3 +140,29 @@ those decisions by implication.
 Database cleanup of unused claim/evidence structures is deferred. Before extending
 aggregation, verification, or feedback storage, follow the dependency checklist in
 [ADR-0010](adr/0010-pr-review-provenance.md#deferred-database-cleanup).
+
+## 11. M2 foundations in progress
+
+[ADR-0011](adr/0011-aggregate-report-provenance.md) applies report-level provenance to
+aggregates. Schema/prompt v3 uses sections and a report-level original-PR reference
+list. No per-claim citations are required. Each reduction level carries only retained
+original PR references; coverage compares the final references with the entire input
+window, including earlier omissions. Citation coverage is not semantic completeness.
+
+Window collection preserves closed/updated query parameters through pagination and
+rejects results if the page limit is exhausted. Local queries select latest merged
+snapshots within inclusive timestamp bounds. Stored snapshots alone do not establish
+that a remote window is complete or fresh; the execution service still needs to resolve
+remote membership and decide when source refresh is required.
+
+Single-node aggregate generation checks the complete request budget before each call,
+permits one malformed-output replacement, and retains attempt metadata. Unknown report
+references reject the whole output without editing its narrative. Terminal provider
+failures remain unusable. Planning rejects exhausted budgets and accounts for schema,
+system, envelope and reserved output costs; actual child output must still be checked
+when executing a tree.
+
+Migration 0004 removes obsolete PR claim tables while preserving active M1 reviews and
+source/model provenance. Residual aggregate claim tables are legacy scaffold. Aggregate
+v3 storage requires a subsequent migration. Bottom-up orchestration, aggregate caching
+and persistence (#28), CLI (#29), and a reviewed M2 demo/release (#30) remain unbuilt.

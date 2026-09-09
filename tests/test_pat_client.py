@@ -204,3 +204,48 @@ def test_list_merged_pull_requests_in_window():
         # until < since raises ValueError
         with pytest.raises(ValueError, match="until must be greater"):
             client.list_merged_pull_requests("owner/repo", until, since)
+
+
+@pytest.mark.parametrize("exhausted", [False, True])
+def test_window_pagination_preserves_filters_and_rejects_partial_results(exhausted: bool):
+    from datetime import datetime
+
+    pages: list[int] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/repos/owner/repo":
+            return httpx.Response(200, json={"visibility": "public"})
+        assert request.url.params["state"] == "closed"
+        assert request.url.params["sort"] == "updated"
+        assert request.url.params["direction"] == "desc"
+        assert request.url.params["per_page"] == "100"
+        page = int(request.url.params["page"])
+        pages.append(page)
+        # Keep all records in the window, with a duplicate across the page boundary.
+        batch = [
+            {
+                "number": page,
+                "merged_at": "2026-06-01T00:00:00Z",
+                "updated_at": "2026-06-02T00:00:00Z",
+            }
+        ]
+        if page == 2:
+            batch.append(batch[0])
+        headers = {"link": '<https://evil.invalid/?page=2>; rel="next"'}
+        return httpx.Response(200, json=batch, headers=headers if exhausted or page == 1 else {})
+
+    with httpx.Client(
+        base_url="https://api.github.com", transport=httpx.MockTransport(handle)
+    ) as http:
+        client = PatClient(None, client=http)
+        if exhausted:
+            with pytest.raises(CollectionError, match="Pagination limit"):
+                client.list_merged_pull_requests(
+                    "owner/repo", datetime(2026, 6, 1, tzinfo=UTC), datetime(2026, 6, 2, tzinfo=UTC)
+                )
+            assert len(pages) == 100
+        else:
+            assert client.list_merged_pull_requests(
+                "owner/repo", datetime(2026, 6, 1, tzinfo=UTC), datetime(2026, 6, 2, tzinfo=UTC)
+            ) == [1, 2]
+            assert pages == [1, 2]

@@ -35,12 +35,14 @@ class PatClient:
         self.client.close()
 
     def _get(self, path: str, page: int | None = None) -> httpx.Response:
+        url = httpx.URL(path)
+        if page is not None:
+            url = url.copy_merge_params({"per_page": 100, "page": page})
         for attempt in range(3):
             try:
                 response = self.client.get(
-                    path,
+                    url,
                     headers=self.headers,
-                    params={"per_page": 100, "page": page} if page else None,
                 )
             except httpx.TransportError:
                 if attempt == 2:
@@ -92,12 +94,12 @@ class PatClient:
     def list_merged_pull_requests(
         self, repository: str, since: datetime, until: datetime
     ) -> list[int]:
-        self.get_repository_metadata(repository)
         since_utc = since if since.tzinfo is not None else since.replace(tzinfo=UTC)
         until_utc = until if until.tzinfo is not None else until.replace(tzinfo=UTC)
         if until_utc < since_utc:
             raise ValueError("until must be greater than or equal to since")
 
+        self.get_repository_metadata(repository)
         root = f"/repos/{repository}"
         merged_numbers: list[tuple[datetime, int]] = []
         for page in range(1, 101):
@@ -114,7 +116,7 @@ class PatClient:
                 if updated_at_raw:
                     updated_at = datetime.fromisoformat(updated_at_raw.replace("Z", "+00:00"))
                     if updated_at < since_utc:
-                        return [num for _, num in sorted(merged_numbers)]
+                        return list(dict.fromkeys(num for _, num in sorted(merged_numbers)))
 
                 merged_at_raw = item.get("merged_at")
                 if merged_at_raw:
@@ -124,8 +126,10 @@ class PatClient:
 
             if "next" not in response.links:
                 break
+        else:
+            raise CollectionError("Pagination limit reached; collection is incomplete")
 
-        return [num for _, num in sorted(merged_numbers)]
+        return list(dict.fromkeys(num for _, num in sorted(merged_numbers)))
 
     def fetch_pull_request(self, repository: str, number: int) -> PullRequestSnapshot:
         if number < 1:

@@ -20,3 +20,4 @@ Keep the reasoning concise. Add a superseding record when reversing a decision.
 | [0008](0008-query-time-aggregation.md) | Build reports on demand through a summary tree | proposed |
 | [0009](0009-m1-publication-contract.md) | M1 claims-only publication with unverified interpretation | superseded by 0010 |
 | [0010](0010-pr-review-provenance.md) | PR-level reviews and provenance; supersedes 0009 | accepted |
+| [0011](0011-aggregate-report-provenance.md) | Aggregate report references and original-PR coverage | accepted |

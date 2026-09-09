@@ -6,7 +6,11 @@ budget settings produce the same tree. Execution and caching remain unbuilt; see
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+
+from altiscope.llm.tokens import estimate_tokens
+from altiscope.schemas.aggregate import AggregateOutput
 
 
 class PlanningError(Exception):
@@ -82,6 +86,8 @@ def plan_reduction(
     """Build the tree. `budget_tokens` is the routed model's input budget for the
     aggregate stage. `child_output_tokens` is the planning estimate for how large a
     child aggregate is when it becomes an input to its parent."""
+    if per_item_overhead < 0 or child_output_tokens <= 0 or any(i.tokens < 0 for i in items):
+        raise PlanningError("Token sizes must be nonnegative and child output must be positive")
     if not items:
         msg = "nothing to aggregate"
         raise PlanningError(msg)
@@ -117,3 +123,37 @@ def plan_reduction(
             cursor += len(g)
         children = next_children
     return children[0]
+
+
+def calculate_aggregate_input_budget(
+    model_context_window: int,
+    *,
+    budget_fraction: float = 0.75,
+    reserved_output_tokens: int = 16_000,
+    system_prompt_tokens: int = 1_000,
+    overhead_tokens: int = 256,
+    schema_tokens: int | None = None,
+) -> int:
+    """Remaining item budget after system, schema, envelope and output reservation.
+
+    Callers must supply actual system and user-envelope costs. Execution must also
+    estimate each fully rendered request, including repair instructions.
+    """
+    if schema_tokens is None:
+        schema_tokens = estimate_tokens(
+            json.dumps(AggregateOutput.model_json_schema(), sort_keys=True)
+        )
+    if model_context_window <= 0 or not 0 < budget_fraction <= 1:
+        raise PlanningError("Invalid model context window or budget fraction")
+    if min(reserved_output_tokens, system_prompt_tokens, overhead_tokens, schema_tokens) < 0:
+        raise PlanningError("Token reservations must be nonnegative")
+    usable = int(model_context_window * budget_fraction) - reserved_output_tokens
+    budget = usable - system_prompt_tokens - overhead_tokens - schema_tokens
+    if budget <= 0:
+        raise PlanningError("No input budget remains after request and output reservations")
+    return budget
+
+
+def estimate_aggregate_request_tokens(system: str, user: str) -> int:
+    schema = json.dumps(AggregateOutput.model_json_schema(), sort_keys=True)
+    return estimate_tokens(system) + estimate_tokens(user) + estimate_tokens(schema) + 256

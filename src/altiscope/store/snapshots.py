@@ -177,6 +177,8 @@ def load_snapshots_in_window(
     owner, name = repository.split("/")
     since_utc = since if since.tzinfo is not None else since.replace(tzinfo=UTC)
     until_utc = until if until.tzinfo is not None else until.replace(tzinfo=UTC)
+    if until_utc < since_utc:
+        raise ValueError("until must be greater than or equal to since")
     rows = conn.execute(
         "SELECT p.id, p.snapshot_version, p.normalized_snapshot FROM pull_requests p "
         "JOIN repositories r ON r.id=p.repository_id "

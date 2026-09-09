@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-AGGREGATE_SCHEMA_VERSION = 2
+AGGREGATE_SCHEMA_VERSION = 3
 
 
 class Altitude(StrEnum):
@@ -26,35 +26,24 @@ class Altitude(StrEnum):
         return cls(normalized)
 
 
-class AggregateClaimKind(StrEnum):
-    feature = "feature"
-    bugfix = "bugfix"
-    refactor = "refactor"
-    infra = "infra"
-    test = "test"
-    docs = "docs"
-    perf = "perf"
-    security = "security"
-    dependency = "dependency"
-    chore = "chore"
-    other = "other"
-    theme = "theme"
+class AggregateSection(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-
-class AggregateClaim(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    kind: AggregateClaimKind
+    heading: str = Field(min_length=1)
     text: str = Field(min_length=1)
-    sources: list[str] = Field(
-        min_length=1,
-        description="Opaque source PR tokens (e.g. PR-42) exactly as shown in the material.",
-    )
 
 
 class AggregateOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     headline: str = Field(min_length=1)
-    claims: list[AggregateClaim] = Field(min_length=1)
+    sections: list[AggregateSection] = Field(min_length=1)
     narrative: str = Field(min_length=1)
+    sources: list[str] = Field(
+        description="Original PR tokens referenced by this report, not per-claim evidence."
+    )
+
+    @field_validator("sources")
+    @classmethod
+    def unique_sources(cls, sources: list[str]) -> list[str]:
+        return sorted(set(sources))
