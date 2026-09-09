@@ -1,39 +1,85 @@
-# ADR-0011: Aggregate report references and original-PR coverage
+# ADR-0011: Save report inputs and generation history
 
-Status: accepted (owner authorized the foundation correction following review).
+Status: accepted (owner decisions during the 2026-09-08 documentation review).
 
-Supersedes the parent-claim-to-child-claim proposal in ADR-0008 and the aggregate
-claim contract in schema/prompt v2. Applies ADR-0010's accepted provenance approach
-to M2; it does not introduce per-claim assessment.
+Corrects the M2 design on this branch following owner review. Replaces the
+claim-link and coverage proposals in ADR-0004, ADR-0007, and ADR-0008. It keeps
+ADR-0010's overall PR review and generation history.
+
+## Why
+
+A reader asks what changed in billing this month. Altiscope should summarize the
+relevant PR reports. If the reader wants to investigate, they can open the input
+reports, continue through any intermediate summaries, and reach the original GitHub
+PRs. They can then inspect the code or speak to someone who worked on the change.
+
+The application knows which reports it supplied. Asking the model to choose source
+references adds an unreliable judgment to a relationship we can record directly.
+A coverage percentage based on those choices raises questions without measuring
+whether the summary is useful or accurate.
 
 ## Decision
 
-Aggregate schema/prompt v3 contains a headline, narrative, sections with headings
-and text, and one report-level list of original opaque PR tokens. Sections do not
-require individual citations. The application maps the tokens to saved PR reviews
-and immutable snapshots for navigation. The full supplied input set is separate
-from the report's referenced subset. Reference presence does not prove support.
+The model writes a headline, narrative, and sections. It produces no source list,
+per-sentence citations, or coverage score. Code records every supplied report version
+and derives the complete underlying PR link list from those records.
 
-Each intermediate report retains original PR tokens. A parent may reference only
-tokens retained by its children, never an intermediate node ID or an omitted PR.
-Coverage is computed over the full original window and the final report references,
-so both earlier and final-level omissions remain visible. A report with no references
-has zero coverage for a nonempty input set; an empty window needs no model call.
+Each report version must retain:
 
-Reject unknown navigation tokens as malformed output; never selectively trim prose
-or claims. Allow at most one replacement attempt. Refusal, truncation and transport
-failure are terminal. Check the complete request, including schema and any repair
-instructions, before every call. These checks establish usable output and navigation,
-not semantic accuracy. Interpretations remain unverified.
+- Its generated text and generation time.
+- The model/provider, exact prompt version and content, and generation settings.
+- The model-call attempts and their outcomes, using the existing retention policy.
+- For a PR report, the saved PR snapshot and metadata.
+- For a combined report, the exact versions of all immediate input reports.
 
-## Consequences and implementation boundary
+This history is provenance: it supports drill-down, troubleshooting, and comparison.
+It does not promise that an LLM summary is factually correct.
 
-Historical prompts remain unchanged. No published aggregate v2 compatibility reader
-is introduced. Migration 0004 remains append-only; its residual aggregate-claim and
-assessment scaffolding is not the v3 persistence contract. Issue #28 must introduce
-report storage and report-to-review/child lineage in a new migration, without relying
-on claim rows or disturbing M1 publications. Existing migrations are not rewritten.
+## Versions and updates
 
-The foundation includes single-node generation and repair, deterministic planning,
-and original-PR reference coverage. Tree orchestration, route selection, cache
-invalidation, atomic aggregate persistence, CLI and the M2 demo remain subsequent work.
+Preserve successful earlier versions when generating another result. By default, a
+new summary uses the latest successfully generated reports from the level below.
+A failed attempt must not become the current report. Manual version selection is
+future work.
+
+Existing summaries retain their original inputs. Regenerating one PR report does
+not rewrite an old monthly report or automatically trigger more calls. When someone
+requests an update, resolve the latest inputs and create or reuse the appropriate
+result. A cache match requires the same input versions and generation settings,
+including prompt, schema, model, and reader level. Explicit regeneration must be
+able to produce another attempt even with the same settings.
+
+For example, a monthly report that used PR report 17 continues to link to 17 after
+report 18 is generated for that PR. A requested update uses 18. Both monthly report
+versions remain inspectable. Future comparison controls can use this retained history.
+
+## Alternatives considered
+
+- **Model-selected references and coverage:** rejected because source membership is
+  already known by the application and citation presence does not measure accuracy.
+- **Keep only the latest report:** rejected because it would erase the inputs and
+  outputs needed to investigate an older summary or compare model and prompt changes.
+- **Automatically regenerate dependent reports:** rejected to keep updates deliberate
+  and avoid unrequested model calls.
+
+## Implementation
+
+Schema/prompt v4 removes model-selected references. The engine renders input reports
+and records all their version identities and underlying PR links. The reference
+validator, coverage calculator, and threshold setting have been removed. Historical
+prompts and applied migrations remain unchanged.
+
+M1 retains PR report reruns, source snapshots, and generation records. M2 now executes
+summary trees, caches matching results, and saves aggregate versions and exact input
+links using migration 0005. Both stages share the model-call writer. Before saving an
+aggregate, storage checks its inputs against the specific saved report versions.
+A failed node is retained and cannot displace a successful cached result.
+
+Normal aggregate requests refresh GitHub sources; `--local-only` explicitly uses saved
+data. The CLI supports `aggregate`, `show-aggregate`, and `show-report` for historical
+PR reports. `--regenerate` bypasses aggregate caches and preserves previous results.
+There is no automatic regeneration of reports above changed inputs.
+
+Fresh-schema and populated-M1 upgrade tests cover the new migration. Full tree and
+CLI regressions cover caching, input changes, failures, and drill-down. Human sample
+review and release integration remain pending; see the [release evidence](../releases/m2.md).

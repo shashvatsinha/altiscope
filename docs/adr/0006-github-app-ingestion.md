@@ -26,5 +26,5 @@ managed independently of an individual employee's account.
 - GitHub Enterprise Server needs a configurable base URL and compatibility testing.
 - Handle rate limits and backoff in the client. Run large backfills as background jobs.
 
-The GitHub client interface exists. Authentication, fetching, snapshot storage, and
-background collection remain unbuilt.
+Public fetching with a personal access token or anonymous access, retries, and snapshot
+storage are implemented. GitHub App authentication and background collection remain unbuilt.

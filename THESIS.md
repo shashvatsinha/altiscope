@@ -20,12 +20,12 @@ understanding what happened still requires reading the work.
 
 Altiscope would start with GitHub pull requests: records that bring code changes,
 explanations, and review discussions together. It would save a copy of each completed
-change and use AI to describe it in statements linked to evidence.
+change and use AI to write a report linked to that saved source.
 
 Readers would select a team or repository, dates, and a level of detail. An engineer
 could inspect how billing events are processed. A manager could follow the broader
-billing changes. Both accounts would draw on the same sources, and readers could trace
-a statement back to the material supporting it. The [README](README.md#what-it-would-look-like)
+billing changes. Both accounts would draw on the same sources. Readers could open the reports used
+to generate a summary, then follow their links to the original PRs. The [README](README.md#what-it-would-look-like)
 gives a fictional example.
 
 The challenge is preserving meaning as the account gets shorter. Code can establish
@@ -39,11 +39,14 @@ advantage is making the result easier to check, correct, and use in another acco
 
 The application links each generated review to its source PR for human inspection.
 A later independent model may assess the overall review against the changes. That
-assessment can also be wrong; provenance remains useful regardless of its verdict.
+assessment can also be wrong. Keeping the source reports and generation history
+helps readers investigate regardless of its verdict.
 Per-claim assessment is not planned.
 
-Milestone 1 produces an overall code-based review with a deterministic PR association,
-code-computed facts and disclosed input omissions. Interpretations remain unverified.
+Milestone 1 produces an overall code-based review linked to its saved PR. It records
+which model and prompt were used, computes facts in code, and lists excluded input
+material. Readers can use that history to investigate errors or try another model
+or prompt while keeping earlier results.
 The [architecture](docs/ARCHITECTURE.md#4-reviews-and-publication) describes the contract.
 
 ## What could make this fail

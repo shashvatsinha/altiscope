@@ -1,0 +1,22 @@
+[
+  {
+    "headline": "Billing processing controls",
+    "narrative": "Billing jobs retry temporary failures within a limit, while transactional event-ID handling prevents repeated intake from enqueueing the same ID again.",
+    "sections": [
+      {
+        "heading": "Limits",
+        "text": "Permanent errors are not retried by this path. Exactly-once external charging and production success rates are not established."
+      }
+    ]
+  },
+  {
+    "headline": "Billing diagnostics and tests",
+    "narrative": "Failed jobs produce a counter and job-ID log. Tests exercise retry limits and repeated-event intake.",
+    "sections": [
+      {
+        "heading": "Limits",
+        "text": "Alert thresholds, automated operational response, and measured production outcomes are outside these changes."
+      }
+    ]
+  }
+]

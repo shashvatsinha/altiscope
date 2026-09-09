@@ -1,41 +1,42 @@
-# ADR-0004: Store evidence links in relational tables
+# ADR-0004: Store source relationships in database tables
 
-Status: proposed
+Status: proposed; claim-level links replaced by [ADR-0010](0010-pr-review-provenance.md)
+and [ADR-0011](0011-aggregate-report-provenance.md).
 
-## Context
+## Why
 
-Provenance links a statement to its sources. Storing those links in tables lets queries
-follow them, check that referenced records exist, and identify uncited inputs. Citations
-stored only as prose would need parsing before those checks.
+When a reader opens the inputs to a report, the application should be able to load
+those records directly. Saving relationships in database tables allows that lookup
+and lets the database check that linked records exist. Links embedded only in prose
+would need parsing and could be missing or malformed.
 
-## Decision
+## Original proposal
 
-- For one pull request, use `pr_summaries` → `pr_claims` → `pr_claim_evidence`.
-  Evidence can identify a file, a diff hunk, quoted source text, a comment, or a commit.
-  Validate references against the saved snapshot before storing the summary.
-- For combined summaries, use `aggregate_summaries` → `aggregate_claims` →
-  `aggregate_claim_sources`. Each source refers to a `pr_claim` or a child
-  `aggregate_claim`. A `CHECK` constraint requires exactly one source foreign key.
-- Record input sets in `aggregate_inputs` to identify cited and uncited inputs.
-- Give the model short per-call tokens for references that map to database IDs.
-  Resolve those tokens in code and reject unknown ones.
+The first design split reports into individual claims. Each PR claim linked to files,
+patches, comments, or commits. Each combined-report claim linked to claims in reports
+below it. The model returned short labels that code translated into database IDs.
+
+This required several claim and evidence tables. It could check whether a referenced
+source existed, but could not establish whether the source supported the statement.
+
+## Current direction
+
+ADR-0010 and ADR-0011 replace the claim structure. A PR report links to its saved PR
+snapshot and generation history. A combined report links to every input report version.
+The application knows these inputs and records them without asking the model to choose.
+Readers can follow those relationships down to GitHub PR links.
+
+The general choice of relational links remains useful. The old claim tables are not
+a requirement for new work. Follow ADR-0011 and the current migrations when designing
+aggregate storage.
 
 ## Alternatives considered
 
-- **Parse free-text citations after generation.** This adds parsing rules and still
-  requires checking each reference against the source material.
-- **A generic `references(from_type, from_id, to_type, to_id)` table.** This is compact,
-  but ordinary foreign keys cannot enforce references to several possible tables.
+- **Parse links from generated text:** depends on the model's formatting and selection.
+- **One generic table for every relationship type:** fewer tables, but ordinary foreign
+  keys cannot check a reference that may point to several different tables.
 
-## Consequences
+## Tradeoff
 
-- Evidence exploration would follow `aggregate_claim_sources` recursively, then
-  `pr_claim_evidence` and the relevant snapshot records, including `pr_files`.
-- Separate tables allow queries to identify cited and uncited inputs. They add joins
-  and storage work.
-- A future finding about a change could use the same statement-and-evidence structure.
-  Such analysis remains outside the first version.
-
-The schema and reference checkers exist; saving results and exploring their evidence
-remain unbuilt. Reference checks establish membership in the source material, not
-whether that material supports the statement.
+Explicit relationships add tables and queries. They earn their place by supporting
+source inspection and preserving exactly what an older report used.

@@ -1,0 +1,154 @@
+[
+  {
+    "snapshot": {
+      "repository": "altiscope-demo/billing",
+      "number": 1,
+      "github_id": 9100000000000001,
+      "title": "Retry failed billing jobs",
+      "body": "Retry failed billing jobs",
+      "author_login": "demo-author",
+      "state": "merged",
+      "is_draft": false,
+      "base_ref": "main",
+      "head_ref": "demo/change-1",
+      "merge_commit_sha": "0000000000000000000000000000000000000001",
+      "created_at": "2026-06-01T09:00:00Z",
+      "updated_at": "2026-06-01T12:00:00Z",
+      "closed_at": "2026-06-01T12:00:00Z",
+      "merged_at": "2026-06-01T12:00:00Z",
+      "merged_by_login": "demo-reviewer",
+      "additions": 5,
+      "deletions": 0,
+      "changed_files": 1,
+      "labels": [],
+      "html_url": "https://github.com/altiscope-demo/billing/pull/1",
+      "files": [
+        {
+          "path": "billing/jobs.py",
+          "status": "added",
+          "additions": 5,
+          "deletions": 0,
+          "patch": "@@ -0,0 +1,5 @@\n+def process(job):\n+    try:\n+        charge(job)\n+    except TemporaryError:\n+        queue.retry(job, max_attempts=3)\n"
+        }
+      ],
+      "commits": [],
+      "reviews": [],
+      "comments": []
+    },
+    "review": "Billing jobs retry temporary charge failures up to three attempts. Permanent failures are not retried by this path. The PR does not establish a production success rate."
+  },
+  {
+    "snapshot": {
+      "repository": "altiscope-demo/billing",
+      "number": 2,
+      "github_id": 9100000000000002,
+      "title": "Deduplicate billing events",
+      "body": "Deduplicate billing events",
+      "author_login": "demo-author",
+      "state": "merged",
+      "is_draft": false,
+      "base_ref": "main",
+      "head_ref": "demo/change-2",
+      "merge_commit_sha": "0000000000000000000000000000000000000002",
+      "created_at": "2026-06-02T09:00:00Z",
+      "updated_at": "2026-06-02T12:00:00Z",
+      "closed_at": "2026-06-02T12:00:00Z",
+      "merged_at": "2026-06-02T12:00:00Z",
+      "merged_by_login": "demo-reviewer",
+      "additions": 5,
+      "deletions": 0,
+      "changed_files": 1,
+      "labels": [],
+      "html_url": "https://github.com/altiscope-demo/billing/pull/2",
+      "files": [
+        {
+          "path": "billing/events.py",
+          "status": "added",
+          "additions": 5,
+          "deletions": 0,
+          "patch": "@@ -0,0 +1,5 @@\n+def accept(event):\n+    with transaction():\n+        if not insert_event_if_absent(event.id):\n+            return\n+        enqueue(event)\n"
+        }
+      ],
+      "commits": [],
+      "reviews": [],
+      "comments": []
+    },
+    "review": "Billing event acceptance stores the event ID and enqueues the event in one transaction. A previously stored ID returns without enqueueing again. This guards the intake path; it does not prove all external charges are exactly-once."
+  },
+  {
+    "snapshot": {
+      "repository": "altiscope-demo/billing",
+      "number": 3,
+      "github_id": 9100000000000003,
+      "title": "Report failed billing jobs",
+      "body": "Report failed billing jobs",
+      "author_login": "demo-author",
+      "state": "merged",
+      "is_draft": false,
+      "base_ref": "main",
+      "head_ref": "demo/change-3",
+      "merge_commit_sha": "0000000000000000000000000000000000000003",
+      "created_at": "2026-06-03T09:00:00Z",
+      "updated_at": "2026-06-03T12:00:00Z",
+      "closed_at": "2026-06-03T12:00:00Z",
+      "merged_at": "2026-06-03T12:00:00Z",
+      "merged_by_login": "demo-reviewer",
+      "additions": 3,
+      "deletions": 0,
+      "changed_files": 1,
+      "labels": [],
+      "html_url": "https://github.com/altiscope-demo/billing/pull/3",
+      "files": [
+        {
+          "path": "billing/metrics.py",
+          "status": "added",
+          "additions": 3,
+          "deletions": 0,
+          "patch": "@@ -0,0 +1,3 @@\n+def job_failed(job):\n+    counters.increment(\"billing_job_failures\")\n+    logs.error(\"billing job failed\", job_id=job.id)\n"
+        }
+      ],
+      "commits": [],
+      "reviews": [],
+      "comments": []
+    },
+    "review": "Failed billing jobs increment a failure counter and log the job ID. Operators can use these signals to investigate failures. Alert thresholds and an automatic response are outside this change."
+  },
+  {
+    "snapshot": {
+      "repository": "altiscope-demo/billing",
+      "number": 4,
+      "github_id": 9100000000000004,
+      "title": "Test billing retry and duplicate handling",
+      "body": "Test billing retry and duplicate handling",
+      "author_login": "demo-author",
+      "state": "merged",
+      "is_draft": false,
+      "base_ref": "main",
+      "head_ref": "demo/change-4",
+      "merge_commit_sha": "0000000000000000000000000000000000000004",
+      "created_at": "2026-06-04T09:00:00Z",
+      "updated_at": "2026-06-04T12:00:00Z",
+      "closed_at": "2026-06-04T12:00:00Z",
+      "merged_at": "2026-06-04T12:00:00Z",
+      "merged_by_login": "demo-reviewer",
+      "additions": 4,
+      "deletions": 0,
+      "changed_files": 1,
+      "labels": [],
+      "html_url": "https://github.com/altiscope-demo/billing/pull/4",
+      "files": [
+        {
+          "path": "tests/test_billing.py",
+          "status": "added",
+          "additions": 4,
+          "deletions": 0,
+          "patch": "@@ -0,0 +1,4 @@\n+def test_retry_limit():\n+    assert attempts_after_temporary_failure() == 3\n+def test_duplicate_event():\n+    assert enqueue_count_for_repeated_id() == 1\n"
+        }
+      ],
+      "commits": [],
+      "reviews": [],
+      "comments": []
+    },
+    "review": "Tests cover the retry limit and the repeated-event intake path. These checks exercise expected behavior in the test environment. They do not measure production reliability or customer outcomes."
+  }
+]

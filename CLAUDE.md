@@ -8,15 +8,16 @@ change needs a decision reversed, add a superseding ADR in the same PR.
 
 - Accuracy over breadth. A feature that could cause a summary to say something the
   source does not support is not a feature.
-- The model never produces numbers; code computes facts. The model never emits database
-  ids; it emits per-call opaque tokens the system maps back and validates.
+- Code computes facts and counts. Models summarize text; they do not select source
+  references. The application records all input report versions and underlying PR links.
 - PR reviews link to their immutable PR snapshot and model call. M1 does not require
   claim citations or per-claim assessment; see ADR-0010.
 - No evaluative language about people in any prompt or template.
 - Prompts are versioned files under `prompts/`. Never edit one that has produced
   published output; add a new version.
-- Nothing is pre-computed on a calendar. Aggregates are on-demand and cached by input
-  set.
+- Aggregates update only on request, using the latest successful input reports. Preserve
+  every report version and its exact inputs. Cache by input versions and generation
+  settings. No coverage scores. See ADR-0011.
 
 ## Toolchain
 
@@ -41,8 +42,8 @@ change needs a decision reversed, add a superseding ADR in the same PR.
 - `src/altiscope/llm/router.py`: routing decision and its recorded reason.
 - `src/altiscope/ingest/diff_policy.py`: what the model is and is not shown, and why.
 - `src/altiscope/aggregate/planner.py`: the query-time reduction tree.
-- `src/altiscope/aggregate/coverage.py`: cited vs. uncited inputs.
-- `migrations/0001_initial.sql`: the provenance contract.
+- `src/altiscope/aggregate/inputs.py`: exact input report versions and all underlying PR links.
+- `migrations/`: append-only database history; early claim tables are legacy design.
 
 ## Roadmap
 

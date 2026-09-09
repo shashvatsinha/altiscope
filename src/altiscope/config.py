@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,7 +22,6 @@ class Settings(BaseSettings):
     prompts_dir: Path = Path("prompts")
     migrations_dir: Path = Path("migrations")
     llm_payload_retention: Literal["full", "hashes_only"] = "full"
-    low_coverage_threshold: float = Field(default=0.6, ge=0, le=1)
 
 
 def load_settings() -> Settings:

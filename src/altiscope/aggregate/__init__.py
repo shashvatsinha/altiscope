@@ -1,1 +1,1 @@
-"""On-demand aggregation: planning the reduction tree, validating sources, computing coverage."""
+"""On-demand report planning, generation, and application-recorded inputs."""

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
-AGGREGATE_SCHEMA_VERSION = 3
+AGGREGATE_SCHEMA_VERSION = 4
 
 
 class Altitude(StrEnum):
@@ -39,11 +39,3 @@ class AggregateOutput(BaseModel):
     headline: str = Field(min_length=1)
     sections: list[AggregateSection] = Field(min_length=1)
     narrative: str = Field(min_length=1)
-    sources: list[str] = Field(
-        description="Original PR tokens referenced by this report, not per-claim evidence."
-    )
-
-    @field_validator("sources")
-    @classmethod
-    def unique_sources(cls, sources: list[str]) -> list[str]:
-        return sorted(set(sources))

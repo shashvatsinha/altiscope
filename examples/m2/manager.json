@@ -1,0 +1,14 @@
+{
+  "headline": "Billing processing gains recovery and investigation support",
+  "narrative": "The billing work adds recovery from temporary failures, protection against repeated event intake, and better information for investigating failed jobs. Focused tests cover the retry and duplicate-handling paths.",
+  "sections": [
+    {
+      "heading": "Delivered capabilities",
+      "text": "Temporary failures can be retried within a limit, repeated events are filtered at intake, and failure records identify the affected jobs."
+    },
+    {
+      "heading": "Delivery limits",
+      "text": "These changes describe code and tests. They do not establish fewer customer issues or improved production reliability. Alert policy and operational outcome measurement remain outside this work."
+    }
+  ]
+}
