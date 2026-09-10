@@ -12,7 +12,12 @@ from altiscope.llm.provider import Provider
 from altiscope.llm.registry import Registry
 from altiscope.prompts import Prompt
 from altiscope.store.aggregates import load_pr_input
-from altiscope.store.snapshots import StoredSnapshot, load_snapshots_in_window, save_snapshot
+from altiscope.store.snapshots import (
+    StoredSnapshot,
+    load_snapshots_in_window,
+    reconcile_repository,
+    save_snapshot,
+)
 from altiscope.summarize.service import summarize
 
 
@@ -31,9 +36,16 @@ def resolve_reports(
         snapshots = load_snapshots_in_window(conn, query.repository, query.since, query.until)
     else:
         numbers = client.list_merged_pull_requests(query.repository, query.since, query.until)
+        metadata = client.repository_metadata
+        with conn.transaction():
+            reconcile_repository(
+                conn, metadata["full_name"], int(metadata["id"]), metadata["default_branch"]
+            )
         snapshots = []
         for number in numbers:
-            snapshot = client.fetch_pull_request(query.repository, number)
+            snapshot = client.fetch_pull_request(metadata["full_name"], number)
+            if int(client.repository_metadata["id"]) != int(metadata["id"]):
+                raise ValueError("Repository identity changed during collection; retry the request")
             if (
                 snapshot.state != PrState.merged
                 or snapshot.merged_at is None

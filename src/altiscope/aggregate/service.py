@@ -171,7 +171,9 @@ def cache_key(
     query: AggregateQuery, inputs: tuple[ReportInput, ...], prompt: Prompt, settings: dict[str, Any]
 ) -> str:
     payload = dict(
-        query=query.model_dump(mode="json"),
+        # Exact report versions already bind every input to its repository.
+        # A mutable locator must not invalidate an otherwise identical request.
+        query=query.model_dump(mode="json", exclude={"repository"}),
         inputs=[asdict(i) for i in inputs],
         prompt_hash=prompt.content_hash,
         settings=settings,

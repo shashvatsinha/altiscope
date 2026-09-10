@@ -43,6 +43,7 @@ class PatClient:
                 response = self.client.get(
                     url,
                     headers=self.headers,
+                    follow_redirects=False,
                 )
             except httpx.TransportError:
                 if attempt == 2:
@@ -51,6 +52,16 @@ class PatClient:
                 continue
             if response.is_success:
                 return response
+            if response.status_code in (301, 302, 307, 308):
+                target = response.url.join(response.headers.get("location", ""))
+                if (target.scheme, target.host, target.port) != (
+                    response.url.scheme,
+                    response.url.host,
+                    response.url.port,
+                ):
+                    raise CollectionError("GitHub redirected outside the configured API origin")
+                url = target
+                continue
             transient = response.status_code in (429, 500, 502, 503, 504) or (
                 response.status_code == 403
                 and (
@@ -88,6 +99,10 @@ class PatClient:
         repo = self._get(root).json()
         if repo.get("private") or repo.get("visibility", "public") != "public":
             raise CollectionError("Ingestion supports public repositories only")
+        if not isinstance(repo.get("id"), int) or not re.fullmatch(
+            r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo.get("full_name", "")
+        ):
+            raise CollectionError("GitHub response lacks canonical repository identity")
         self.repository_metadata = repo
         return repo
 
@@ -99,8 +114,8 @@ class PatClient:
         if until_utc < since_utc:
             raise ValueError("until must be greater than or equal to since")
 
-        self.get_repository_metadata(repository)
-        root = f"/repos/{repository}"
+        repo = self.get_repository_metadata(repository)
+        root = f"/repos/{repo['full_name']}"
         merged_numbers: list[tuple[datetime, int]] = []
         for page in range(1, 101):
             response = self._get(
@@ -135,7 +150,7 @@ class PatClient:
         if number < 1:
             raise CollectionError("Expected positive PR number")
         repo = self.get_repository_metadata(repository)
-        root = f"/repos/{repository}"
+        root = f"/repos/{repo['full_name']}"
         path = f"{root}/pulls/{number}"
         pr = self._get(path).json()
         files = self._pages(path + "/files")
@@ -181,7 +196,7 @@ class PatClient:
             )
         }
         fields.update(
-            repository=repository,
+            repository=repo["full_name"],
             github_id=pr["id"],
             body=pr.get("body") or "",
             author_login=_login(pr),

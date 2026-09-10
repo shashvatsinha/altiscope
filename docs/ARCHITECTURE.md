@@ -62,6 +62,12 @@ in Postgres. A saved copy is a **snapshot**: later GitHub edits create a new ver
 instead of changing the source of an older report. Unchanged content reuses the
 existing snapshot. Raw responses and collection times are also retained.
 
+GitHub repository IDs are stable; owner/name locators are mutable and case-insensitive.
+Refreshes reconcile renames without rewriting snapshot or report history. Locator-only
+changes reuse existing source/report versions. Conflicting IDs at the same name fail
+explicitly. See [repository identity rules](REPOSITORY-IDENTITY.md) for local lookup,
+cache behavior, name reuse, and migration implications.
+
 Collection follows GitHub pagination and checks file and commit counts. It rejects
 results when those checks fail or when it detects the PR changing during collection.
 GitHub endpoints do not provide a single atomic read, so this cannot detect every

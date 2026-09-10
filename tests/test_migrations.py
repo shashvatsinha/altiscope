@@ -20,6 +20,37 @@ def test_migration_files_are_numbered():
 
 
 @pytest.mark.skipif(not os.environ.get("ALTISCOPE_DATABASE_URL"), reason="needs Postgres")
+def test_repository_index_rejects_ambiguous_legacy_locators():
+    from uuid import uuid4
+
+    import psycopg
+    from psycopg import sql
+
+    schema = "identity_upgrade_" + uuid4().hex
+    with psycopg.connect(os.environ["ALTISCOPE_DATABASE_URL"], autocommit=True) as conn:
+        conn.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+        try:
+            conn.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
+            for migration in discover(REPO_ROOT / "migrations")[:5]:
+                conn.execute(cast(LiteralString, migration.path.read_text()))
+            conn.execute(
+                "INSERT INTO repositories (github_id, owner, name, default_branch, visibility) "
+                "VALUES (1,'Owner','Repo','main','public'), (2,'owner','repo','main','public')"
+            )
+            migration = REPO_ROOT / "migrations/0006_repository_locator.sql"
+            with pytest.raises(psycopg.errors.UniqueViolation):
+                conn.execute(cast(LiteralString, migration.read_text()))
+            conn.execute("ROLLBACK")
+            assert conn.execute(
+                "SELECT github_id FROM repositories ORDER BY github_id"
+            ).fetchall() == [(1,), (2,)]
+        finally:
+            conn.execute("ROLLBACK")
+            conn.execute("SET search_path TO public")
+            conn.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
+
+
+@pytest.mark.skipif(not os.environ.get("ALTISCOPE_DATABASE_URL"), reason="needs Postgres")
 def test_schema_applies_and_enforces_provenance_checks():
     import psycopg
 
