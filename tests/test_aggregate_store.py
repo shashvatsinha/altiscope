@@ -162,7 +162,11 @@ def test_remote_refresh_and_failed_missing_review(database: str, snapshot: PullR
     client = Mock(spec=PatClient)
     client.list_merged_pull_requests.return_value = [snapshot.number]
     client.fetch_pull_request.return_value = snapshot
-    client.repository_metadata = {"id": repo_id, "default_branch": "main"}
+    client.repository_metadata = {
+        "id": repo_id,
+        "full_name": snapshot.repository,
+        "default_branch": "main",
+    }
     client.raw = {}
     prompt = latest_prompt(REPO_ROOT / "prompts", "pr_summary")
     with psycopg.connect(database, autocommit=True) as conn:

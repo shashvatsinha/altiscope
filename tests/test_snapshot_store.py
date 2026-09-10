@@ -46,15 +46,23 @@ def test_snapshot_roundtrip_versions_and_rollback(database: str, snapshot: PullR
         assert load_snapshot(conn, snapshot.repository, snapshot.number).id == second.id
 
 
+@pytest.mark.parametrize("vary_case", [False, True])
 def test_concurrent_identical_ingestion_has_one_latest(
-    database: str, snapshot: PullRequestSnapshot
+    database: str, snapshot: PullRequestSnapshot, vary_case: bool
 ):
     snapshot, repo_id = unique_snapshot(snapshot)
 
-    def write(_: int):
+    def write(index: int):
+        source = snapshot.model_copy(
+            update={
+                "repository": snapshot.repository.upper()
+                if vary_case and index % 2
+                else snapshot.repository
+            }
+        )
         with psycopg.connect(database) as conn:
             return save_snapshot(
-                conn, snapshot, repository_id=repo_id, default_branch="main", raw={}
+                conn, source, repository_id=repo_id, default_branch="main", raw={}
             ).id
 
     with ThreadPoolExecutor(max_workers=4) as pool:

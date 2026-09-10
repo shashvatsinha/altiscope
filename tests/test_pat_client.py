@@ -92,7 +92,12 @@ def api_payloads() -> dict[str, Any]:
         "html_url": "https://github.com/owner/repo/pull/1",
     }
     return {
-        "/repos/owner/repo": {"id": 123, "private": False, "default_branch": "main"},
+        "/repos/owner/repo": {
+            "id": 123,
+            "full_name": "owner/repo",
+            "private": False,
+            "default_branch": "main",
+        },
         "/repos/owner/repo/pulls/1": pr,
         "/repos/owner/repo/pulls/1/files": [
             {"filename": "asset.bin", "status": "added", "additions": 1, "deletions": 0}
@@ -150,10 +155,54 @@ def test_count_mismatch_fails_before_snapshot_creation():
         PatClient(None, client=http).fetch_pull_request("owner/repo", 1)
 
 
+@pytest.mark.parametrize("locator", ["OWNER/REPO", "old/name"])
+def test_canonical_identity_and_rename_redirect(locator: str):
+    payloads = api_payloads()
+    paths: list[str] = []
+
+    def handle(request: httpx.Request):
+        paths.append(request.url.path)
+        if request.url.path == f"/repos/{locator}":
+            return httpx.Response(301, headers={"location": "/repos/owner/repo"})
+        return httpx.Response(200, json=payloads[request.url.path])
+
+    with httpx.Client(
+        base_url="https://api.github.com", transport=httpx.MockTransport(handle)
+    ) as http:
+        client = PatClient("secret", client=http)
+        snapshot = client.fetch_pull_request(locator, 1)
+    assert snapshot.repository == "owner/repo"
+    assert snapshot.html_url == "https://github.com/owner/repo/pull/1"
+    assert client.repository_metadata["id"] == 123
+    assert all(path.startswith("/repos/owner/repo") for path in paths[1:])
+
+
+def test_redirect_cannot_forward_token_to_another_origin():
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request):
+        requests.append(request)
+        return httpx.Response(301, headers={"location": "https://evil.invalid/repos/o/r"})
+
+    with (
+        httpx.Client(
+            base_url="https://api.github.com", transport=httpx.MockTransport(handle)
+        ) as http,
+        pytest.raises(CollectionError, match="origin"),
+    ):
+        PatClient("secret", client=http).get_repository_metadata("owner/repo")
+    assert len(requests) == 1
+
+
 def test_list_merged_pull_requests_in_window():
     from datetime import datetime
 
-    repo_payload = {"id": 1, "default_branch": "main", "visibility": "public"}
+    repo_payload = {
+        "id": 1,
+        "full_name": "owner/repo",
+        "default_branch": "main",
+        "visibility": "public",
+    }
     pulls_page1 = [
         {
             "number": 10,
@@ -214,7 +263,9 @@ def test_window_pagination_preserves_filters_and_rejects_partial_results(exhaust
 
     def handle(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/repos/owner/repo":
-            return httpx.Response(200, json={"visibility": "public"})
+            return httpx.Response(
+                200, json={"id": 1, "full_name": "owner/repo", "visibility": "public"}
+            )
         assert request.url.params["state"] == "closed"
         assert request.url.params["sort"] == "updated"
         assert request.url.params["direction"] == "desc"
