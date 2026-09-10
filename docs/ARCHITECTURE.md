@@ -128,8 +128,10 @@ is an estimate, not a provider invoice.
 
 [ADR-0011](adr/0011-aggregate-report-provenance.md) defines the current input and version
 rules. Database changes use new numbered migrations; applied migrations are never
-rewritten. Legacy claim tables are historical structures, not the intended design
-for aggregate storage.
+rewritten. The runner commits each file and its version marker atomically; the bounded
+procedure for databases affected by the historical split transaction is documented
+in [Database migrations](MIGRATIONS.md). Legacy claim tables are historical structures,
+not the intended design for aggregate storage.
 
 ## 7. Choosing AI models
 

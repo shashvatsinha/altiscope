@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import LiteralString, cast
+from uuid import uuid4
 
 import pytest
 
@@ -79,13 +80,109 @@ def test_no_migration_edits_after_apply_marker():
 
 
 @pytest.mark.skipif(not os.environ.get("ALTISCOPE_DATABASE_URL"), reason="needs Postgres")
+def test_apply_pending_builds_fresh_schema_and_is_idempotent():
+    import psycopg
+    from psycopg import sql
+
+    from altiscope.store.migrate import apply_pending
+
+    schema = "migration_fresh_" + uuid4().hex
+    migrations_dir = REPO_ROOT / "migrations"
+    versions = [migration.version for migration in discover(migrations_dir)]
+    with psycopg.connect(os.environ["ALTISCOPE_DATABASE_URL"], autocommit=True) as conn:
+        conn.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+        try:
+            conn.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
+
+            assert apply_pending(conn, migrations_dir) == versions
+            assert apply_pending(conn, migrations_dir) == []
+            assert [
+                row[0]
+                for row in conn.execute(
+                    "SELECT version FROM schema_migrations ORDER BY version"
+                ).fetchall()
+            ] == versions
+        finally:
+            conn.execute("SET search_path TO public")
+            conn.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
+
+
+@pytest.mark.skipif(not os.environ.get("ALTISCOPE_DATABASE_URL"), reason="needs Postgres")
+def test_version_record_failure_rolls_back_migration(tmp_path: Path):
+    """The marker insert and migration DDL must share one transaction."""
+    import psycopg
+    from psycopg import sql
+
+    from altiscope.store.migrate import apply_pending
+
+    migration = tmp_path / "0002_atomic.sql"
+    migration.write_text("BEGIN;\nCREATE TABLE atomic_effect (id integer);\nCOMMIT;\n")
+    schema = "migration_atomic_" + uuid4().hex
+    with psycopg.connect(os.environ["ALTISCOPE_DATABASE_URL"], autocommit=True) as conn:
+        conn.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+        try:
+            conn.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
+            conn.execute("CREATE TABLE schema_migrations (version text PRIMARY KEY)")
+            conn.execute(
+                """CREATE FUNCTION reject_migration_marker() RETURNS trigger AS $$
+                BEGIN
+                    RAISE EXCEPTION 'injected marker failure';
+                END;
+                $$ LANGUAGE plpgsql"""
+            )
+            conn.execute(
+                """CREATE TRIGGER reject_migration_marker
+                BEFORE INSERT ON schema_migrations
+                FOR EACH ROW EXECUTE FUNCTION reject_migration_marker()"""
+            )
+
+            with pytest.raises(psycopg.errors.RaiseException, match="injected marker failure"):
+                apply_pending(conn, tmp_path)
+
+            assert conn.execute("SELECT to_regclass('atomic_effect')").fetchone() == (None,)
+            assert conn.execute("SELECT version FROM schema_migrations").fetchall() == []
+        finally:
+            conn.execute("SET search_path TO public")
+            conn.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
+
+
+@pytest.mark.skipif(not os.environ.get("ALTISCOPE_DATABASE_URL"), reason="needs Postgres")
+def test_historical_missing_marker_fails_closed(tmp_path: Path):
+    """A historically applied migration is not guessed at or marked automatically."""
+    import psycopg
+    from psycopg import sql
+
+    from altiscope.store.migrate import apply_pending
+
+    migration = tmp_path / "0002_historical.sql"
+    migration.write_text("BEGIN;\nCREATE TABLE existing_effect (value text);\nCOMMIT;\n")
+    schema = "migration_historical_" + uuid4().hex
+    with psycopg.connect(os.environ["ALTISCOPE_DATABASE_URL"], autocommit=True) as conn:
+        conn.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+        try:
+            conn.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
+            conn.execute("CREATE TABLE schema_migrations (version text PRIMARY KEY)")
+            conn.execute("CREATE TABLE existing_effect (value text)")
+            conn.execute("INSERT INTO existing_effect VALUES ('preserve me')")
+
+            with pytest.raises(psycopg.errors.DuplicateTable):
+                apply_pending(conn, tmp_path)
+
+            assert conn.execute("SELECT value FROM existing_effect").fetchall() == [
+                ("preserve me",)
+            ]
+            assert conn.execute("SELECT version FROM schema_migrations").fetchall() == []
+        finally:
+            conn.execute("SET search_path TO public")
+            conn.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
+
+
+@pytest.mark.skipif(not os.environ.get("ALTISCOPE_DATABASE_URL"), reason="needs Postgres")
 @pytest.mark.parametrize("with_published_review", [False, True])
 def test_fresh_schema_and_upgrade_preserve_m1_review(
     snapshot: PullRequestSnapshot, with_published_review: bool
 ):
     """Exercise actual migration SQL in an isolated schema, including a populated M1 upgrade."""
-    from uuid import uuid4
-
     import psycopg
     from psycopg import sql
 
