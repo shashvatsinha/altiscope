@@ -124,7 +124,7 @@ def test_all_input_links_survive_multilevel_summarization_and_reruns():
     assert updated.inputs[0].report_version_id == "review-4"
     assert child.inputs == original
     assert parent.inputs[0].report_version_id == "group-1"
-    # This exercises in-memory generation, not the future database version resolver.
+    # This exercises in-memory generation. Database version resolution has separate tests.
 
 
 def test_invalid_input_records_fail_before_model_call():

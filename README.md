@@ -8,7 +8,8 @@ readers can inspect, at less total effort than preparing those accounts manually
 **Repository summaries are implemented and ready for M2 review.** The CLI collects
 merged PRs for a date window, summarizes their saved reports, and lets readers drill
 down to the exact reports and GitHub PRs used. It preserves model, prompt, and version
-history. Human sample review and release integration remain pending.
+history. The three M2 code-review fixes are merged into the integration branch.
+Human sample approval and the M2 release remain pending. See the [release evidence](docs/releases/m2.md).
 
 [Read the billing examples](examples/m2/README.md) · [Run the M2 walkthrough](docs/M2-WALKTHROUGH.md)
 

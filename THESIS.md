@@ -76,7 +76,8 @@ Measure three things:
 - **Total effort:** how long does preparation, reading, checking, and correction take?
 
 The first study can expose weaknesses. Demonstrating lasting savings requires a team
-using the system over time. The complete workflow and these evaluations are still unbuilt.
+using the system over time. M1 and M2 implement PR reports and repository summaries.
+The human evaluation study remains planned work.
 
 ## Inspiration
 

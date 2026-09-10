@@ -1,19 +1,14 @@
 # M2 handover
 
-Prepared 2026-09-09 for the next Codex session.
+Updated 2026-09-10 after the three code-review fixes.
 
 ## Start here
 
-Repository: `/Users/shashvat/Work/altiscope`
+Integration branch: `feat/m2-report-contract`.
 
-Current branch: `feat/m2-report-contract`
-
-M2 implementation commit: `9469700` — Complete M2 report execution, history,
-CLI and demos.
-
-The branch has no configured upstream and was not pushed by the last session. A push
-was attempted, but the user stopped it. Do not assume any remote branch or pull request
-was created. Check the current local and remote state before publishing anything.
+Verified integration commit: `7d71aaa`, the merge of PR #37. PRs #35 and #36
+are also merged into this branch. Issues #31, #32, and #33 are closed.
+The remote integration branch exists. M2 is not merged into `main` or released.
 
 Read these files before changing M2:
 
@@ -145,15 +140,9 @@ versions, add `--regenerate`.
 
 ## Validation evidence
 
-The final database-backed run on 2026-09-08 passed all 124 tests:
-
-```bash
-ALTISCOPE_DATABASE_URL='postgresql://altiscope:altiscope@localhost:5432/altiscope' \
-  .venv/bin/pytest -o addopts='' -q
-```
-
-Ruff lint, Ruff format checking, strict pyright, `git diff --check`, and local Markdown
-link checks also passed. The tests cover:
+The 2026-09-10 Postgres-backed suite passed all 175 tests with no skips.
+See [release evidence](releases/m2.md) for exact commands and separate CI records.
+The suite covers:
 
 - Single-, multi-, and three-level aggregate execution.
 - Zero-call cache hits.
@@ -173,19 +162,22 @@ they do not establish live model quality.
 
 ## Review and release state
 
-Implementation and repeatable demos are ready for owner review. The owner has not yet
-approved the engineer and manager sample reports in `examples/m2/`, although review was
-requested. Do not mark the sample as human-reviewed until that approval is explicit.
+The three code fixes are merged into the integration branch. Each PR's CI passed.
+Those PRs have no submitted GitHub review records; merge evidence does not establish
+sample approval. Parent #5 and implementation issues #24 through #30 remain open.
+Issue #34 tracks this documentation reconciliation.
 
-No M2 pull request, integration merge, main merge, release tag, or issue closure was
-completed by the last session. GitHub issues #24–#30 and parent #5 may still contain
-the superseded coverage/citation wording. Reconcile those descriptions with ADR-0011
-before treating their old acceptance text as current product direction.
+Human approval of the engineer and manager samples remains pending. See the
+[sample review record](../examples/m2/README.md) and the separate smoke-test record
+in [release evidence](releases/m2.md).
 
-The next session should begin with owner review feedback. If the implementation is
-accepted, inspect remote branches, push the feature and M2 integration branches as
-appropriate, open a focused draft PR against the M2 integration branch, and let CI and
-repository review complete before any merge, issue closure, or release tag.
+Next steps:
+
+1. Review the focused documentation PR against `feat/m2-report-contract`.
+2. Obtain explicit owner approval of the sample reports.
+3. Complete milestone PR review, CI, and integration before the merge into `main`.
+4. Close completed issues and create the release tag after the release requirements pass.
+5. Record the resulting PR, commit, issue, and tag links in the release evidence.
 
 Known limits that do not block this implementation review:
 
