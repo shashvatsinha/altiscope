@@ -5,13 +5,15 @@ import json
 import anthropic
 import httpx2 as httpx
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from altiscope.llm.anthropic_provider import AnthropicProvider
 from altiscope.llm.registry import ModelSpec, ProviderSpec
 
 
 class Output(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     text: str
 
 
@@ -21,6 +23,9 @@ class Output(BaseModel):
         ('{"text":"ok"}', "end_turn", "end_turn"),
         ('{"text":42}', "end_turn", "invalid_output"),
         ("not JSON", "end_turn", "invalid_output"),
+        ("{}", "end_turn", "invalid_output"),
+        ('{"text":"ok","sk-secret":"secret"}', "end_turn", "invalid_output"),
+        ("not JSON", "pause_turn", "pause_turn"),
         ('{"text":', "max_tokens", "max_tokens"),
         ("refused", "refusal", "refusal"),
     ],
@@ -66,3 +71,11 @@ def test_anthropic_outcomes(text: str, stop: str, expected: str):
     assert result.provider_request_id == "req-fixture"
     assert result.raw_text == text
     assert len(requests) == 1
+
+    if expected == "invalid_output":
+        assert result.validation_error
+        assert "secret" not in result.validation_error
+        assert any(
+            code in result.validation_error
+            for code in ("string_type", "json_invalid", "missing", "extra_forbidden")
+        )

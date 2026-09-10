@@ -13,6 +13,7 @@ from altiscope.aggregate.planner import estimate_aggregate_request_tokens
 from altiscope.llm.provider import GenerationResult, Provider
 from altiscope.llm.registry import ModelSpec
 from altiscope.llm.types import Effort
+from altiscope.llm.validation import sanitize_diagnostic
 from altiscope.schemas.aggregate import AggregateOutput
 
 
@@ -71,6 +72,8 @@ def generate_aggregate(
         )
         output = None
         errors = (result.stop_reason,)
+        if not result.ok and result.stop_reason in ("end_turn", "invalid_output"):
+            errors = (*errors, sanitize_diagnostic(result.validation_error, AggregateOutput))
         if result.ok and result.parsed is not None:
             output = result.parsed
             errors = ()

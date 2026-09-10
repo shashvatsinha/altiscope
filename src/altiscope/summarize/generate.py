@@ -10,6 +10,7 @@ from altiscope.llm.provider import GenerationResult, Provider
 from altiscope.llm.registry import ModelSpec
 from altiscope.llm.tokens import estimate_tokens
 from altiscope.llm.types import Effort
+from altiscope.llm.validation import sanitize_diagnostic
 from altiscope.schemas.pr_summary import PrReviewOutput
 from altiscope.summarize.context import PrContext, render_user_prompt
 from altiscope.summarize.publication import Publication, PublicationState, assess
@@ -70,6 +71,8 @@ def generate_account(
         )
         publication = assess(result.parsed if result.ok else None)
         errors = publication.errors if result.ok else (result.stop_reason,)
+        if not result.ok and result.stop_reason in ("end_turn", "invalid_output"):
+            errors = (*errors, sanitize_diagnostic(result.validation_error, PrReviewOutput))
         if not result.ok:
             publication = Publication(PublicationState.needs_review, None, errors)
         attempts.append(Attempt(user, result, errors, started_at, datetime.now(UTC)))
