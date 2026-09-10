@@ -12,8 +12,9 @@ The model writes the explanation. The application records which reports it read.
 ## 1. Implementation status
 
 **M1 implements the single-PR workflow. M2 now implements repository summaries.**
-M2's code and repeatable demos are ready for review; human sample review and release
-integration remain pending. See the [M2 walkthrough](M2-WALKTHROUGH.md) and
+M2 includes the migration, repository identity, and validation diagnostic fixes from
+PRs #35, #36, and #37 on `feat/m2-report-contract`. Human sample approval and the
+M2 release remain pending. See the [M2 walkthrough](M2-WALKTHROUGH.md) and
 [release evidence](releases/m2.md).
 
 | Workflow | Available now |

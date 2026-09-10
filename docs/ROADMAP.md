@@ -8,13 +8,14 @@ component completion alone does not authorize a release.
    Public PR ingestion, immutable snapshots, PR-linked review publication, provider-neutral
    generation and provenance, CLI inspection and a credential-free demo. Implementation
    children [#11](https://github.com/shashvatsinha/altiscope/issues/11) through
-   [#17](https://github.com/shashvatsinha/altiscope/issues/17). Implementation under review;
+   [#17](https://github.com/shashvatsinha/altiscope/issues/17). The owner accepted M1 and merged PRs #20, #22, and #23;
    see the [walkthrough](M1-WALKTHROUGH.md) and [release evidence](releases/m1.md).
 2. [One repository, understood — #5](https://github.com/shashvatsinha/altiscope/issues/5).
    Date-window collection, summaries at different levels of detail, and drill-down through
    saved report versions to all underlying PRs. Preserve model/prompt history; updates
    happen on request using the latest successful inputs. Implementation and repeatable
-   demos are ready for review; sample review and release integration remain pending.
+   demos are implemented on `feat/m2-report-contract`. Review fixes #31, #32, and #33
+   are merged there. Human sample approval and the M2 release remain pending.
    See the [walkthrough](M2-WALKTHROUGH.md), [release evidence](releases/m2.md), and [ADR-0011](adr/0011-aggregate-report-provenance.md).
 3. [Different models, measurable results — #6](https://github.com/shashvatsinha/altiscope/issues/6).
    Versioned recipes, optional second-model verification, model comparisons and a

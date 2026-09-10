@@ -1,7 +1,8 @@
 """Plan model calls that combine inputs in groups within an estimated token budget.
 
 Sort PlanItems by their supplied order keys, IDs, and token counts. The same inputs and
-budget settings produce the same tree. Execution and caching remain unbuilt; see ADR-0008.
+budget settings produce the same tree. The aggregate service executes the tree and
+reuses cached reports under the input and version rules in ADR-0011.
 """
 
 from __future__ import annotations

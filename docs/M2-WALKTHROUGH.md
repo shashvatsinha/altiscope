@@ -48,6 +48,9 @@ uv run altiscope db migrate
 uv run altiscope demo --stage aggregate --altitude manager --multi-level --persist
 ```
 
+Each migration and its version record commit together. For historical marker failures, use the
+[bounded recovery procedure](MIGRATIONS.md).
+
 The default connection is `postgresql://altiscope:altiscope@localhost:5432/altiscope`.
 Use `ALTISCOPE_DATABASE_URL` to select a different development database.
 
@@ -114,6 +117,15 @@ uv run altiscope aggregate owner/repository \
 This skips GitHub, so the saved window may be incomplete or stale. It may still make
 model calls for missing PR reports or aggregates. If the resolved window is empty,
 the command prints `0 PRs merged` and makes no model calls.
+
+Repository names are case-insensitive. A remote request resolves the current name from
+GitHub's stable repository ID. A rename preserves saved reports and cache reuse.
+After a remote refresh, use the current name for `--local-only` requests.
+See [repository identity rules](REPOSITORY-IDENTITY.md) for name reuse and conflict behavior.
+
+If output has an invalid format, the service permits one repair request.
+Saved call errors contain bounded schema diagnostics, without response values or SDK exception details.
+A failed repair preserves earlier usable reports. Verbose inspection shows the call outcomes.
 
 ## 5. Try another prompt or model
 

@@ -1,6 +1,7 @@
 """Exact report versions supplied to a model, recorded independently of its output.
 
-The future storage service resolves versions and loads their text and PR links.
+The resolver selects PR report versions. Storage loads their text and PR links.
+The aggregate service supplies saved child reports to each parent request.
 An aggregate input carries all underlying PR links, including those not discussed.
 """
 

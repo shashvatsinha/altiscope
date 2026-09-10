@@ -27,4 +27,6 @@ Both retain the limitations and the same four underlying PR links.
 
 These are hand-authored synthetic fixtures. Agent inspection and passing replay tests
 are not human review or evidence of live model quality. Owner review of the samples
-has been requested and is pending. No human review is claimed yet.
+remains pending as of 2026-09-10. No explicit owner approval is retained in this record.
+The live public-repository smoke test does not establish approval of these synthetic samples.
+See the [release evidence](../../docs/releases/m2.md) for the separate smoke-test record.
