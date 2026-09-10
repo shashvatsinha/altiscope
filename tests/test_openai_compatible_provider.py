@@ -230,3 +230,31 @@ def test_native_failures_preserve_usage(content: str, finish: str, stop: str):
     assert result.usage.input_tokens == 11
     assert result.usage.output_tokens == 7
     assert result.raw_text == content
+
+
+@pytest.mark.parametrize("caps", [(), ("json_mode",), ("json_schema",)])
+@pytest.mark.parametrize(
+    ("content", "diagnostic"),
+    [
+        ("{}", "headline: missing; count: missing"),
+        ('{"headline":"h","count":1,"sk-secret":"Bearer secret"}', "extra: extra_forbidden"),
+        ('{"headline":[],"count":1}', "headline: string_type"),
+        ("not JSON secret", "output: json_invalid"),
+    ],
+)
+def test_validation_diagnostics_in_every_mode(caps: tuple[str, ...], content: str, diagnostic: str):
+    result = _provider(FakeServer(_completion(content))).generate_structured(
+        model=_model(*caps), system="s", user="u", output_type=Out, max_tokens=100, effort="low"
+    )
+    assert result.stop_reason == "invalid_output"
+    assert result.validation_error == diagnostic
+
+
+@pytest.mark.parametrize("caps", [(), ("json_mode",), ("json_schema",)])
+def test_unknown_finish_with_malformed_output_is_terminal(caps: tuple[str, ...]):
+    result = _provider(
+        FakeServer(_completion("not JSON", finish="unexpected"))
+    ).generate_structured(
+        model=_model(*caps), system="s", user="u", output_type=Out, max_tokens=100, effort="low"
+    )
+    assert result.stop_reason == "unknown" and not result.ok

@@ -18,6 +18,7 @@ from altiscope.llm.provider import GenerationResult, Usage
 from altiscope.llm.registry import ModelSpec, ProviderSpec
 from altiscope.llm.tokens import estimate_tokens
 from altiscope.llm.types import Effort
+from altiscope.llm.validation import validation_diagnostic
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -66,7 +67,9 @@ class AnthropicProvider:
                 latency_ms=int((time.monotonic() - started) * 1000),
                 output_mode="native",
                 provider_request_id=getattr(exc, "request_id", None),
-                validation_error=type(exc).__name__,
+                validation_error=validation_diagnostic(exc, output_type)
+                if isinstance(exc, ValidationError)
+                else None,
             )
 
     def _generate(
@@ -105,9 +108,9 @@ class AnthropicProvider:
                 ),
                 model_id=payload.get("model") or model.wire_name,
                 stop_reason=(
-                    payload.get("stop_reason")
-                    if payload.get("stop_reason") in ("max_tokens", "refusal")
-                    else "invalid_output"
+                    "invalid_output"
+                    if payload.get("stop_reason") == "end_turn"
+                    else payload.get("stop_reason") or "unknown"
                 ),
                 usage=Usage(
                     usage.get("input_tokens", 0),
@@ -118,7 +121,7 @@ class AnthropicProvider:
                 latency_ms=int((time.monotonic() - started) * 1000),
                 output_mode="native",
                 provider_request_id=raw_response.headers.get("request-id"),
-                validation_error=type(exc).__name__,
+                validation_error=validation_diagnostic(exc, output_type),
             )
         latency_ms = int((time.monotonic() - started) * 1000)
 

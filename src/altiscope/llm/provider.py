@@ -37,6 +37,7 @@ class GenerationResult(Generic[T]):
     output_mode: StructuredOutputMode
     provider_request_id: str | None = None
     refusal_category: str | None = None
+    # Sanitized field/code pairs from llm.validation; never raw exception text.
     validation_error: str | None = None
 
     @property

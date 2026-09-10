@@ -10,6 +10,7 @@ from altiscope.llm.provider import GenerationResult, Usage
 from altiscope.llm.registry import ModelSpec, Registry
 from altiscope.llm.tokens import estimate_tokens
 from altiscope.llm.types import Effort
+from altiscope.llm.validation import validation_diagnostic
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -33,12 +34,15 @@ class FixtureProvider:
     ) -> GenerationResult[T]:
         self.calls += 1
         raw = next(self.responses)
+        diagnostic = None
         try:
             parsed = output_type.model_validate_json(raw)
-        except ValidationError:
+        except ValidationError as exc:
             parsed = None
+            diagnostic = validation_diagnostic(exc, output_type)
         return GenerationResult(
             parsed=parsed,
+            validation_error=diagnostic,
             raw_text=raw,
             model_id="fixture",
             stop_reason="end_turn" if parsed is not None else "invalid_output",

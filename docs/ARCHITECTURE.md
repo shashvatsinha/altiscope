@@ -92,6 +92,14 @@ It allows one retry for malformed output. A refusal, truncated response, or tran
 failure does not replace a usable report. Here, “published” means saved as the current
 usable report; it does not mean posted to an external service.
 
+Malformed output diagnostics use schema field/code pairs such as `review: missing`
+or `extra: extra_forbidden`. They contain at most eight errors and 512 characters;
+`...` marks omitted errors. Unknown field names, response values, validator messages,
+and SDK exception details are excluded. Both report workflows include the same
+diagnostic in the single repair request and the failed call's `error` metadata,
+including under `hashes_only` retention. Repair requests still pass the complete
+request budget check before being sent.
+
 These checks do not establish accuracy. Readers can inspect the underlying material,
 and the CLI currently labels interpretation as unverified. Prompts ask the model to
 describe work without judging people. Optional independent review and evaluation
