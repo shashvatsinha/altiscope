@@ -13,8 +13,8 @@ The model writes the explanation. The application records which reports it read.
 
 **M1 implements the single-PR workflow. M2 now implements repository summaries.**
 M2 includes the migration, repository identity, and validation diagnostic fixes from
-PRs #35, #36, and #37 on `feat/m2-report-contract`. Human sample approval and the
-M2 release remain pending. See the [M2 walkthrough](M2-WALKTHROUGH.md) and
+PRs #35, #36, and #37. The owner accepted the engineer and manager samples for
+inclusion on 2026-09-10. See the [M2 walkthrough](M2-WALKTHROUGH.md) and
 [release evidence](releases/m2.md).
 
 | Workflow | Available now |

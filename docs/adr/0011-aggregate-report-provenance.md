@@ -81,5 +81,5 @@ PR reports. `--regenerate` bypasses aggregate caches and preserves previous resu
 There is no automatic regeneration of reports above changed inputs.
 
 Fresh-schema and populated-M1 upgrade tests cover the new migration. Full tree and
-CLI regressions cover caching, input changes, failures, and drill-down. Human sample
-review and release integration remain pending; see the [release evidence](../releases/m2.md).
+CLI regressions cover caching, input changes, failures, and drill-down. Sample acceptance
+and release integration are tracked in the [release evidence](../releases/m2.md).

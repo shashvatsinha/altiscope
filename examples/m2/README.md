@@ -25,8 +25,9 @@ separate code behavior from unmeasured production outcomes. The engineer view de
 transactional intake and retry behavior; the manager view summarizes capabilities.
 Both retain the limitations and the same four underlying PR links.
 
-These are hand-authored synthetic fixtures. Agent inspection and passing replay tests
-are not human review or evidence of live model quality. Owner review of the samples
-remains pending as of 2026-09-10. No explicit owner approval is retained in this record.
-The live public-repository smoke test does not establish approval of these synthetic samples.
+These are hand-authored synthetic fixtures, not evidence of live model quality.
+On 2026-09-10, after being asked whether the engineer and manager samples were suitable
+to ship, the owner instructed: “Yes, check in these two files.” Both files were already
+tracked and are retained unchanged. This records acceptance for inclusion in M2, not
+a claim of a separate formal review or validation of real-world model accuracy.
 See the [release evidence](../../docs/releases/m2.md) for the separate smoke-test record.
