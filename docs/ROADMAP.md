@@ -13,9 +13,9 @@ component completion alone does not authorize a release.
 2. [One repository, understood — #5](https://github.com/shashvatsinha/altiscope/issues/5).
    Date-window collection, summaries at different levels of detail, and drill-down through
    saved report versions to all underlying PRs. Preserve model/prompt history; updates
-   happen on request using the latest successful inputs. Implementation and repeatable
-   demos are implemented on `feat/m2-report-contract`. Review fixes #31, #32, and #33
-   are merged there. Human sample approval and the M2 release remain pending.
+   happen on request using the latest successful inputs. Implementation, repeatable
+   demos, and review fixes #31 through #34 passed their checks. The owner accepted the
+   engineer and manager samples for inclusion on 2026-09-10.
    See the [walkthrough](M2-WALKTHROUGH.md), [release evidence](releases/m2.md), and [ADR-0011](adr/0011-aggregate-report-provenance.md).
 3. [Different models, measurable results — #6](https://github.com/shashvatsinha/altiscope/issues/6).
    Versioned recipes, optional second-model verification, model comparisons and a
