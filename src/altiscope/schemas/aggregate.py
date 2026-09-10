@@ -6,46 +6,36 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-AGGREGATE_SCHEMA_VERSION = 1
+AGGREGATE_SCHEMA_VERSION = 4
 
 
 class Altitude(StrEnum):
     ic = "ic"
-    lead = "lead"
     manager = "manager"
-    director = "director"
     exec = "exec"
 
-
-class AggregateClaimKind(StrEnum):
-    feature = "feature"
-    bugfix = "bugfix"
-    refactor = "refactor"
-    infra = "infra"
-    test = "test"
-    docs = "docs"
-    perf = "perf"
-    security = "security"
-    dependency = "dependency"
-    chore = "chore"
-    other = "other"
-    theme = "theme"
+    @classmethod
+    def from_str(cls, val: str) -> Altitude:
+        normalized = val.strip().lower()
+        if normalized in ("ic", "engineer", "dev", "tech"):
+            return cls.ic
+        if normalized in ("manager", "lead", "em"):
+            return cls.manager
+        if normalized in ("exec", "executive", "leadership", "director"):
+            return cls.exec
+        return cls(normalized)
 
 
-class AggregateClaim(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class AggregateSection(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    kind: AggregateClaimKind
+    heading: str = Field(min_length=1)
     text: str = Field(min_length=1)
-    sources: list[str] = Field(
-        min_length=1,
-        description="Opaque source claim tokens exactly as shown in the material.",
-    )
 
 
 class AggregateOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     headline: str = Field(min_length=1)
-    claims: list[AggregateClaim] = Field(min_length=1)
+    sections: list[AggregateSection] = Field(min_length=1)
     narrative: str = Field(min_length=1)

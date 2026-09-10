@@ -1,0 +1,20 @@
+SYNTHETIC FIXTURE DEMO — recorded responses, no live model calls.
+PR URLs illustrate navigation; this is not a real GitHub repository.
+Executive view — altiscope-demo/billing
+2026-06-01 through 2026-06-30
+Underlying PRs: 4
+
+Billing resilience and operational visibility
+
+Billing changes add bounded recovery from temporary failures, duplicate-event protection, and failure diagnostics, supported by targeted tests.
+
+Scope of the change
+The work strengthens processing controls and provides information for investigating failures. Customer and business outcomes have not been measured by these PRs.
+
+Underlying PRs:
+  https://github.com/altiscope-demo/billing/pull/1
+  https://github.com/altiscope-demo/billing/pull/2
+  https://github.com/altiscope-demo/billing/pull/3
+  https://github.com/altiscope-demo/billing/pull/4
+
+Aggregate model calls: 1; repeat request: 0.

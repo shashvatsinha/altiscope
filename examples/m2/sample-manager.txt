@@ -1,0 +1,23 @@
+SYNTHETIC FIXTURE DEMO — recorded responses, no live model calls.
+PR URLs illustrate navigation; this is not a real GitHub repository.
+Manager view — altiscope-demo/billing
+2026-06-01 through 2026-06-30
+Underlying PRs: 4
+
+Billing processing gains recovery and investigation support
+
+The billing work adds recovery from temporary failures, protection against repeated event intake, and better information for investigating failed jobs. Focused tests cover the retry and duplicate-handling paths.
+
+Delivered capabilities
+Temporary failures can be retried within a limit, repeated events are filtered at intake, and failure records identify the affected jobs.
+
+Delivery limits
+These changes describe code and tests. They do not establish fewer customer issues or improved production reliability. Alert policy and operational outcome measurement remain outside this work.
+
+Underlying PRs:
+  https://github.com/altiscope-demo/billing/pull/1
+  https://github.com/altiscope-demo/billing/pull/2
+  https://github.com/altiscope-demo/billing/pull/3
+  https://github.com/altiscope-demo/billing/pull/4
+
+Aggregate model calls: 1; repeat request: 0.

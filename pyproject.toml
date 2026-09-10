@@ -1,7 +1,7 @@
 [project]
 name = "altiscope"
 version = "0.0.1"
-description = "Altitude-appropriate visibility into engineering work, sourced from GitHub pull requests, with structured provenance for every claim."
+description = "Altitude-appropriate visibility into engineering work, sourced from GitHub pull requests, with saved report inputs and generation history."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"

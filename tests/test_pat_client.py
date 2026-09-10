@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC
 from typing import Any
 
 import httpx
@@ -91,7 +92,12 @@ def api_payloads() -> dict[str, Any]:
         "html_url": "https://github.com/owner/repo/pull/1",
     }
     return {
-        "/repos/owner/repo": {"id": 123, "private": False, "default_branch": "main"},
+        "/repos/owner/repo": {
+            "id": 123,
+            "full_name": "owner/repo",
+            "private": False,
+            "default_branch": "main",
+        },
         "/repos/owner/repo/pulls/1": pr,
         "/repos/owner/repo/pulls/1/files": [
             {"filename": "asset.bin", "status": "added", "additions": 1, "deletions": 0}
@@ -147,3 +153,150 @@ def test_count_mismatch_fails_before_snapshot_creation():
         pytest.raises(CollectionError, match="counts disagree"),
     ):
         PatClient(None, client=http).fetch_pull_request("owner/repo", 1)
+
+
+@pytest.mark.parametrize("locator", ["OWNER/REPO", "old/name"])
+def test_canonical_identity_and_rename_redirect(locator: str):
+    payloads = api_payloads()
+    paths: list[str] = []
+
+    def handle(request: httpx.Request):
+        paths.append(request.url.path)
+        if request.url.path == f"/repos/{locator}":
+            return httpx.Response(301, headers={"location": "/repos/owner/repo"})
+        return httpx.Response(200, json=payloads[request.url.path])
+
+    with httpx.Client(
+        base_url="https://api.github.com", transport=httpx.MockTransport(handle)
+    ) as http:
+        client = PatClient("secret", client=http)
+        snapshot = client.fetch_pull_request(locator, 1)
+    assert snapshot.repository == "owner/repo"
+    assert snapshot.html_url == "https://github.com/owner/repo/pull/1"
+    assert client.repository_metadata["id"] == 123
+    assert all(path.startswith("/repos/owner/repo") for path in paths[1:])
+
+
+def test_redirect_cannot_forward_token_to_another_origin():
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request):
+        requests.append(request)
+        return httpx.Response(301, headers={"location": "https://evil.invalid/repos/o/r"})
+
+    with (
+        httpx.Client(
+            base_url="https://api.github.com", transport=httpx.MockTransport(handle)
+        ) as http,
+        pytest.raises(CollectionError, match="origin"),
+    ):
+        PatClient("secret", client=http).get_repository_metadata("owner/repo")
+    assert len(requests) == 1
+
+
+def test_list_merged_pull_requests_in_window():
+    from datetime import datetime
+
+    repo_payload = {
+        "id": 1,
+        "full_name": "owner/repo",
+        "default_branch": "main",
+        "visibility": "public",
+    }
+    pulls_page1 = [
+        {
+            "number": 10,
+            "merged_at": "2026-06-15T10:00:00Z",
+            "updated_at": "2026-06-15T10:00:00Z",
+        },
+        {
+            "number": 9,
+            "merged_at": "2026-06-05T10:00:00Z",
+            "updated_at": "2026-06-05T10:00:00Z",
+        },
+        {
+            "number": 8,
+            "merged_at": None,  # closed without merge
+            "updated_at": "2026-06-02T10:00:00Z",
+        },
+        {
+            "number": 7,
+            "merged_at": "2026-05-15T10:00:00Z",
+            "updated_at": "2026-05-15T10:00:00Z",  # before window, stops pagination
+        },
+    ]
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/repos/owner/repo":
+            return httpx.Response(200, json=repo_payload)
+        if request.url.path == "/repos/owner/repo/pulls":
+            return httpx.Response(200, json=pulls_page1)
+        return httpx.Response(404)
+
+    with httpx.Client(
+        base_url="https://api.github.com", transport=httpx.MockTransport(handle)
+    ) as http:
+        client = PatClient(None, client=http)
+        since = datetime(2026, 6, 1, tzinfo=UTC)
+        until = datetime(2026, 6, 30, tzinfo=UTC)
+        numbers = client.list_merged_pull_requests("owner/repo", since, until)
+        assert numbers == [9, 10]  # sorted ascending by merged_at
+
+        # Empty window test
+        empty_numbers = client.list_merged_pull_requests(
+            "owner/repo",
+            datetime(2026, 7, 1, tzinfo=UTC),
+            datetime(2026, 7, 31, tzinfo=UTC),
+        )
+        assert empty_numbers == []
+
+        # until < since raises ValueError
+        with pytest.raises(ValueError, match="until must be greater"):
+            client.list_merged_pull_requests("owner/repo", until, since)
+
+
+@pytest.mark.parametrize("exhausted", [False, True])
+def test_window_pagination_preserves_filters_and_rejects_partial_results(exhausted: bool):
+    from datetime import datetime
+
+    pages: list[int] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/repos/owner/repo":
+            return httpx.Response(
+                200, json={"id": 1, "full_name": "owner/repo", "visibility": "public"}
+            )
+        assert request.url.params["state"] == "closed"
+        assert request.url.params["sort"] == "updated"
+        assert request.url.params["direction"] == "desc"
+        assert request.url.params["per_page"] == "100"
+        page = int(request.url.params["page"])
+        pages.append(page)
+        # Keep all records in the window, with a duplicate across the page boundary.
+        batch = [
+            {
+                "number": page,
+                "merged_at": "2026-06-01T00:00:00Z",
+                "updated_at": "2026-06-02T00:00:00Z",
+            }
+        ]
+        if page == 2:
+            batch.append(batch[0])
+        headers = {"link": '<https://evil.invalid/?page=2>; rel="next"'}
+        return httpx.Response(200, json=batch, headers=headers if exhausted or page == 1 else {})
+
+    with httpx.Client(
+        base_url="https://api.github.com", transport=httpx.MockTransport(handle)
+    ) as http:
+        client = PatClient(None, client=http)
+        if exhausted:
+            with pytest.raises(CollectionError, match="Pagination limit"):
+                client.list_merged_pull_requests(
+                    "owner/repo", datetime(2026, 6, 1, tzinfo=UTC), datetime(2026, 6, 2, tzinfo=UTC)
+                )
+            assert len(pages) == 100
+        else:
+            assert client.list_merged_pull_requests(
+                "owner/repo", datetime(2026, 6, 1, tzinfo=UTC), datetime(2026, 6, 2, tzinfo=UTC)
+            ) == [1, 2]
+            assert pages == [1, 2]

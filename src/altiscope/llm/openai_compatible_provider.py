@@ -27,6 +27,7 @@ from altiscope.llm.provider import GenerationResult, Usage
 from altiscope.llm.registry import ModelSpec, ProviderSpec
 from altiscope.llm.tokens import estimate_tokens
 from altiscope.llm.types import Effort
+from altiscope.llm.validation import validation_diagnostic
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -128,7 +129,9 @@ class OpenAICompatibleProvider:
                 latency_ms=int((time.monotonic() - started) * 1000),
                 output_mode=model.structured_output_mode,
                 provider_request_id=getattr(exc, "request_id", None),
-                validation_error=type(exc).__name__,
+                validation_error=validation_diagnostic(exc, output_type)
+                if isinstance(exc, ValidationError)
+                else None,
             )
 
     def _generate(
@@ -172,7 +175,8 @@ class OpenAICompatibleProvider:
                 usage = payload.get("usage") or {}
                 choice_data = (payload.get("choices") or [{}])[0]
                 message = choice_data.get("message") or {}
-                stop = _FINISH_TO_STOP.get(choice_data.get("finish_reason") or "", "invalid_output")
+                stop = _FINISH_TO_STOP.get(choice_data.get("finish_reason") or "", "unknown")
+                stop = "refusal" if message.get("refusal") else stop
                 if stop == "end_turn":
                     stop = "invalid_output"
                 return GenerationResult(
@@ -188,7 +192,9 @@ class OpenAICompatibleProvider:
                     latency_ms=int((time.monotonic() - started) * 1000),
                     output_mode=mode,
                     provider_request_id=raw_response.headers.get("x-request-id"),
-                    validation_error=type(exc).__name__,
+                    validation_error=validation_diagnostic(exc, output_type)
+                    if isinstance(exc, ValidationError)
+                    else None,
                 )
             choice = completion.choices[0]
             parsed: T | None = choice.message.parsed
@@ -211,7 +217,7 @@ class OpenAICompatibleProvider:
             try:
                 parsed = output_type.model_validate_json(_strip_fences(raw_text))
             except ValidationError as exc:
-                validation_error = str(exc)
+                validation_error = validation_diagnostic(exc, output_type)
         latency_ms = int((time.monotonic() - started) * 1000)
 
         stop_reason = _FINISH_TO_STOP.get(choice.finish_reason or "", "unknown")

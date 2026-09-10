@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -34,12 +35,15 @@ class PatClient:
         self.client.close()
 
     def _get(self, path: str, page: int | None = None) -> httpx.Response:
+        url = httpx.URL(path)
+        if page is not None:
+            url = url.copy_merge_params({"per_page": 100, "page": page})
         for attempt in range(3):
             try:
                 response = self.client.get(
-                    path,
+                    url,
                     headers=self.headers,
-                    params={"per_page": 100, "page": page} if page else None,
+                    follow_redirects=False,
                 )
             except httpx.TransportError:
                 if attempt == 2:
@@ -48,6 +52,16 @@ class PatClient:
                 continue
             if response.is_success:
                 return response
+            if response.status_code in (301, 302, 307, 308):
+                target = response.url.join(response.headers.get("location", ""))
+                if (target.scheme, target.host, target.port) != (
+                    response.url.scheme,
+                    response.url.host,
+                    response.url.port,
+                ):
+                    raise CollectionError("GitHub redirected outside the configured API origin")
+                url = target
+                continue
             transient = response.status_code in (429, 500, 502, 503, 504) or (
                 response.status_code == 403
                 and (
@@ -78,14 +92,65 @@ class PatClient:
                 return items
         raise CollectionError("Pagination limit reached; collection is incomplete")
 
-    def fetch_pull_request(self, repository: str, number: int) -> PullRequestSnapshot:
-        if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository) or number < 1:
-            raise CollectionError("Expected owner/repository and a positive PR number")
+    def get_repository_metadata(self, repository: str) -> dict[str, Any]:
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+            raise CollectionError("Expected owner/repository")
         root = f"/repos/{repository}"
         repo = self._get(root).json()
         if repo.get("private") or repo.get("visibility", "public") != "public":
-            raise CollectionError("M1 ingestion supports public repositories only")
+            raise CollectionError("Ingestion supports public repositories only")
+        if not isinstance(repo.get("id"), int) or not re.fullmatch(
+            r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo.get("full_name", "")
+        ):
+            raise CollectionError("GitHub response lacks canonical repository identity")
         self.repository_metadata = repo
+        return repo
+
+    def list_merged_pull_requests(
+        self, repository: str, since: datetime, until: datetime
+    ) -> list[int]:
+        since_utc = since if since.tzinfo is not None else since.replace(tzinfo=UTC)
+        until_utc = until if until.tzinfo is not None else until.replace(tzinfo=UTC)
+        if until_utc < since_utc:
+            raise ValueError("until must be greater than or equal to since")
+
+        repo = self.get_repository_metadata(repository)
+        root = f"/repos/{repo['full_name']}"
+        merged_numbers: list[tuple[datetime, int]] = []
+        for page in range(1, 101):
+            response = self._get(
+                f"{root}/pulls?state=closed&sort=updated&direction=desc", page=page
+            )
+            batch = response.json()
+            if not isinstance(batch, list):
+                raise CollectionError("Unexpected GitHub collection response")
+            if not batch:
+                break
+            for item in batch:
+                updated_at_raw = item.get("updated_at")
+                if updated_at_raw:
+                    updated_at = datetime.fromisoformat(updated_at_raw.replace("Z", "+00:00"))
+                    if updated_at < since_utc:
+                        return list(dict.fromkeys(num for _, num in sorted(merged_numbers)))
+
+                merged_at_raw = item.get("merged_at")
+                if merged_at_raw:
+                    merged_at = datetime.fromisoformat(merged_at_raw.replace("Z", "+00:00"))
+                    if since_utc <= merged_at <= until_utc:
+                        merged_numbers.append((merged_at, int(item["number"])))
+
+            if "next" not in response.links:
+                break
+        else:
+            raise CollectionError("Pagination limit reached; collection is incomplete")
+
+        return list(dict.fromkeys(num for _, num in sorted(merged_numbers)))
+
+    def fetch_pull_request(self, repository: str, number: int) -> PullRequestSnapshot:
+        if number < 1:
+            raise CollectionError("Expected positive PR number")
+        repo = self.get_repository_metadata(repository)
+        root = f"/repos/{repo['full_name']}"
         path = f"{root}/pulls/{number}"
         pr = self._get(path).json()
         files = self._pages(path + "/files")
@@ -131,7 +196,7 @@ class PatClient:
             )
         }
         fields.update(
-            repository=repository,
+            repository=repo["full_name"],
             github_id=pr["id"],
             body=pr.get("body") or "",
             author_login=_login(pr),

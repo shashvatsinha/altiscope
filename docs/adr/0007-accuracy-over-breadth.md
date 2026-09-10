@@ -1,50 +1,40 @@
-# ADR-0007: Check accuracy and expose omissions
+# ADR-0007: Make reports useful and possible to check
 
-Status: proposed
+Status: proposed; citation, assessment, and coverage rules replaced by
+[ADR-0010](0010-pr-review-provenance.md) and [ADR-0011](0011-aggregate-report-provenance.md).
 
-## Context
+## Why
 
-Reports can misrepresent work through factual errors, overstatement, or selective
-emphasis. A report may contain true statements while omitting relevant work. Readers
-need ways to inspect evidence, see omissions, and report errors.
+A summary can misstate code, overstate its effects, or leave out important context.
+Readers need access to the original material, and the project needs evaluation on
+real reports. More elaborate citation machinery does not by itself solve these problems.
 
-## Decision
+## Parts that remain relevant
 
-1. **Claims with evidence.** Represent each statement as a claim with references checked
-   against the source snapshot. Compose narrative from those claims.
-2. **Computed facts.** Calculate numbers in code, store them separately, and render
-   them from data.
-3. **Source disagreements.** Ask the model to identify differences between the pull
-   request description and its diff.
-4. **Excluded material.** Record files excluded by the diff policy in the input
-   manifest and show that list to readers.
-5. **Second-model review.** Review every claim about an individual pull request, with
-   review enabled by default.
-6. **Coverage.** Report cited and uncited inputs for each aggregate and mark results
-   below a configured threshold.
-7. **Human feedback.** Categorize reported errors, show flags on summaries that use
-   disputed sources, and use corrections as regression cases.
-8. **Describe work.** Exclude judgments about people. Any cross-developer view would
-   show separate accounts side by side, without AI-written comparisons.
+- Compute counts and other structured facts in code.
+- Record which patches were excluded from model input and why.
+- Ask the model to respect differences between the PR description and the code.
+- Preserve prompts and generation history so changes can be investigated.
+- Describe work without judging people.
+- Evaluate accuracy and usefulness with people who understand the changes.
 
-## Alternatives considered
+## Earlier proposal and corrections
 
-- **Rely on one model and its prompt.** This lacks a separate review of whether evidence
-  supports the output. Evaluation on the team's own examples is still needed.
-- **Use model confidence as the primary quality signal.** A confidence score does not
-  explain whether the evidence supports a claim. A second model can provide an
-  inspectable explanation, though its usefulness must also be tested.
+The initial proposal required evidence links and second-model assessment for every
+claim, plus a coverage score based on cited inputs. ADR-0010 replaced individual
+claims with an overall PR review. ADR-0011 records all supplied reports directly and
+removes coverage scores. Readers can inspect the reports and original PRs themselves.
 
-## Consequences and gaps
+Optional second-model assessment of an overall report remains future work, as does
+reader feedback and using reported errors as regression examples. Neither is required
+for the current generation workflow.
 
-- Review adds model calls, cost, and latency. Its benefit needs measurement; separate
-  models can share errors.
-- Prompts are versioned and hashed. The proposed evaluation process should check changes
-  before adoption; the evaluation set and runner remain unbuilt.
-- The current schema generates narrative and claims together. Validation does not
-  reconcile every sentence with the claims, so the first decision above is not yet
-  enforced. Publication rules remain an
-  [open question](../ARCHITECTURE.md#10-open-questions).
-- Computing facts does not prevent generated prose from misstating them. Coverage counts
-  immediate inputs cited, which may be child summaries; it does not measure completeness
-  of the original work. Reader feedback and the review workflow remain unbuilt.
+## Tradeoffs
+
+LLMs summarize probabilistically. Format checks and source history make the software
+usable and inspectable, but do not prove the text correct. Another model also costs
+time and money and can share the first model's errors. Its benefit should be measured
+before making it a routine requirement.
+
+The planned real-PR evaluation will compare accuracy, usefulness, and total human
+effort. The current synthetic demo cannot answer those questions.

@@ -1,63 +1,64 @@
-# ADR-0010: PR-level reviews and provenance
+# ADR-0010: Save an overall PR report with its source and generation history
 
 Status: accepted
 
-Supersedes ADR-0009 and the mandatory claim citations and per-claim assessment
-requirements in ADR-0007. The user approved this scope correction.
+Replaces [ADR-0009](0009-m1-publication-contract.md) and the mandatory sentence-level
+citations and assessment in [ADR-0007](0007-accuracy-over-breadth.md).
+[ADR-0011](0011-aggregate-report-provenance.md) extends this approach to combined reports.
+
+## Why
+
+M1 should explain a merged PR in a useful code-based report. A reader who wants to
+check the explanation can open the PR. Requiring the model to attach evidence to
+every statement adds complexity without establishing that the explanation is correct.
 
 ## Decision
 
-M1 fetches a PR, produces a useful code-based review, and reliably traces that review
-back to its PR. Humans inspect the review and its source. Provenance establishes
-traceability, not factual correctness.
+Generate one overall review from the saved PR. Show code patches before PR prose;
+the description supplies context but may not accurately describe the final changes.
+Code attaches the saved source version and the model-call record to the report.
+The model does not generate sentence-level citations. Per-claim assessment is not planned.
 
-Schema/prompt v3 contains one overall review, without claim-level evidence fields.
-The application links it to the immutable PR snapshot and model call. Code patches
-precede PR prose in model input; prose supplies context rather than proof of changes.
-Published output is explicitly unverified, and input omissions are disclosed.
+Save and display usable output after checking its format and nonblank text. Allow one
+replacement attempt for malformed output. Withhold refused, truncated, or failed
+responses. A failed rerun leaves the previous usable report current.
 
-Malformed or empty output permits one replacement attempt. Refusal, truncation and
-transport failure remain unpublished. Citation matching and language heuristics do
-not gate publication. The prompt continues to prohibit evaluating people.
-
-No per-claim assessment is planned. An independent LLM may assess the overall review
-in a later milestone. Human drill-down is to the source PR.
+Show input exclusions so readers know which material the model did not see. The CLI
+labels interpretation as unverified. A later model may assess an overall report;
+that is separate from this decision. Prompts continue to prohibit judgments about people.
 
 ## Storage and compatibility
 
-Store the review in the existing summary narrative column, linked to the source PR
-snapshot and recorded model call. No new claim/evidence rows are needed. Historical prompt files remain as records. Development accounts from older schemas
-are discarded; no old-format reader or migration of their content is needed.
-A failed rerun does not displace a published review.
+Store report text in the existing summary table, linked to its PR snapshot, prompt,
+and model call. Keep earlier generated versions. No new claim or citation rows are
+needed. Historical prompt files remain unchanged.
+
+This decision did not require a reader for obsolete claim-format development reports.
+It does require preserving active overall PR reports and their source and generation
+history when changing the database.
 
 ## Deferred database cleanup
 
-The application cleanup removes obsolete PR claim schemas and citation validation,
-but deliberately leaves the database schema and existing data unchanged. The unused
-`pr_claims` and `pr_claim_evidence` tables are retained temporarily, not as a commitment
-to restore claim-level citations or assessment.
+At acceptance, unused claim tables were left in place for a separate migration.
+Migration 0004 subsequently removed the obsolete PR claim tables. Some aggregate
+claim and assessment tables remain as legacy structures; they are not the storage
+design for current reports.
 
-Before implementing aggregation, independent review assessment, or feedback storage,
-revisit the claim-based structures in `migrations/0001_initial.sql`:
+When replacing those remaining structures, inspect their foreign keys, indexes,
+uniqueness rules, and checks. The original dependencies in migration 0001 were:
 
-- `pr_claim_evidence` references `pr_claims`.
-- `aggregate_claim_sources.pr_claim_id`, `verifications.pr_claim_id`, and
-  `flags.pr_claim_id` also reference `pr_claims`.
-- Their foreign keys, exactly-one-source checks, unique constraints, and indexes
-  must be addressed explicitly when removing or replacing those references.
+- `pr_claim_evidence` linked to `pr_claims`.
+- `aggregate_claim_sources`, `verifications`, and `flags` also linked to PR claims.
+- Aggregate source rows had checks requiring exactly one source type.
 
-Use a new numbered migration; do not edit applied migrations or use an indiscriminate
-`DROP ... CASCADE`. Decide which unused structures to remove and which to redesign
-around PR reviews. Any future independent assessment targets an overall review,
-not individual claims. Preserve active PR-review-to-snapshot and model-call links,
-including published text, saved facts, and input manifests.
+Use the current schema as the starting point and a new numbered migration for each
+change. Do not rewrite applied migrations or use a broad `DROP ... CASCADE`. Preserve
+active report text, snapshot and model-call links, saved facts, and input manifests.
+Any future independent assessment should target a whole report.
 
-Validate both fresh database setup and upgrades from the existing schema. Update
-schema tests that currently enforce claim-based relationships as part of that migration.
-This note does not authorize data deletion or prescribe the future feature schema.
+## Validation
 
-## Acceptance
-
-Exercise collection, review generation, persistence and inspection. Verify the PR
-association deterministically, preserve prompt/model/input provenance, and inspect
-review usefulness against code changes. Passing shape checks does not prove accuracy.
+Test collection, generation, storage, and inspection together. Check that the saved
+report points to the correct source, prompt, and model call, and that failed reruns
+preserve existing reports. Database changes need both fresh-setup and upgrade tests.
+Human review of generated text is still needed to assess usefulness and accuracy.

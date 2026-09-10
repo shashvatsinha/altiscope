@@ -1,8 +1,8 @@
 """Define the adapter interface for structured generation and token counting.
 
-Routing, prompt preparation, evidence checks, and storage belong outside the adapters.
-Schema validation checks output shape; evidence validation checks references against
-source material. Neither establishes whether a statement is supported.
+Routing, prompt preparation, report input records, and storage belong outside the adapters.
+Schema validation checks output shape. The application records source links without
+model-selected citations. These checks do not establish whether a statement is supported.
 """
 
 from __future__ import annotations
@@ -37,6 +37,7 @@ class GenerationResult(Generic[T]):
     output_mode: StructuredOutputMode
     provider_request_id: str | None = None
     refusal_category: str | None = None
+    # Sanitized field/code pairs from llm.validation; never raw exception text.
     validation_error: str | None = None
 
     @property

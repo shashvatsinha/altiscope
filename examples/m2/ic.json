@@ -1,0 +1,14 @@
+{
+  "headline": "Billing retry, deduplication, and failure diagnostics",
+  "narrative": "Billing processing adds bounded retries for temporary failures and transactional event-ID deduplication at intake. Failure counters, job-ID logs, and focused tests support investigation of those paths.",
+  "sections": [
+    {
+      "heading": "Processing behavior",
+      "text": "Temporary charge failures are requeued up to the retry limit. Event intake stores an ID and enqueues within one transaction; a repeated ID returns before enqueueing. Neither change establishes exactly-once external charging."
+    },
+    {
+      "heading": "Diagnostics and tests",
+      "text": "Failed jobs increment a counter and log their job ID. Tests check the retry limit and duplicate-event behavior. Alert thresholds and production reliability measurements are not included."
+    }
+  ]
+}

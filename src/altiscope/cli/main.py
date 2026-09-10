@@ -134,7 +134,7 @@ def ingest(repository: str, number: int) -> None:
 
 @app.command()
 def summarize(repository: str, number: int) -> None:
-    """Generate and store a citation-checked account of a merged PR."""
+    """Generate and save a report for a merged PR, preserving earlier versions."""
     from altiscope.prompts import latest_prompt
     from altiscope.store.db import connect
     from altiscope.store.snapshots import load_snapshot
@@ -185,6 +185,11 @@ def show(
 
 @app.command()
 def demo(
+    stage: Annotated[str, typer.Option(help="pr_summary or aggregate")] = "pr_summary",
+    multi_level: Annotated[
+        bool, typer.Option(help="Use a small context budget for the aggregate demo")
+    ] = False,
+    altitude: Annotated[str, typer.Option(help="ic, manager, or exec")] = "manager",
     persist: Annotated[bool, typer.Option(help="Also exercise Postgres storage")] = False,
 ) -> None:
     """Replay the checked-in synthetic fixture through the same generation services."""
@@ -197,6 +202,20 @@ def demo(
     from altiscope.summarize.publication import render_account
     from altiscope.summarize.service import prepare
 
+    if stage == "aggregate":
+        import psycopg
+
+        from altiscope.aggregate.demo import run_demo
+        from altiscope.aggregate.planner import PlanningError
+
+        try:
+            typer.echo(run_demo(altitude, persist=persist, multi_level=multi_level), nl=False)
+        except (ValueError, RuntimeError, PlanningError, RoutingError, psycopg.Error) as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from None
+        return
+    if stage != "pr_summary":
+        raise typer.BadParameter("stage must be pr_summary or aggregate")
     settings = load_settings()
     root = Path("examples/m1")
     snapshot = PullRequestSnapshot.model_validate_json((root / "snapshot.json").read_text())
@@ -247,6 +266,171 @@ def demo(
         publication = generated.publication
     typer.echo("SYNTHETIC FIXTURE DEMO — recorded response, no live model call.")
     typer.echo(render_account(publication, ctx), nl=False)
+
+
+@app.command("aggregate")
+def aggregate_command(
+    repository: str,
+    *,
+    since: Annotated[str, typer.Option(help="First UTC date, YYYY-MM-DD")],
+    until: Annotated[str, typer.Option(help="Last UTC date, inclusive, YYYY-MM-DD")],
+    altitude: Annotated[str, typer.Option(help="ic, manager, or exec")] = "manager",
+    local_only: Annotated[
+        bool, typer.Option(help="Use saved sources without checking GitHub")
+    ] = False,
+    regenerate: Annotated[
+        bool, typer.Option(help="Generate new aggregate versions, bypassing cache")
+    ] = False,
+) -> None:
+    """Summarize merged PR reports for a repository and date window."""
+    from datetime import UTC, date, datetime, time
+
+    import psycopg
+
+    from altiscope.aggregate.planner import PlanningError
+    from altiscope.aggregate.resolve import resolve_reports
+    from altiscope.aggregate.service import AggregateQuery, aggregate_reports
+    from altiscope.ingest.github.pat import PatClient
+    from altiscope.prompts import latest_prompt
+    from altiscope.schemas.aggregate import Altitude
+    from altiscope.store.aggregates import PostgresAggregateStore
+    from altiscope.store.db import connect
+
+    client = None
+    try:
+        query = AggregateQuery(
+            repository=repository,
+            since=datetime.combine(date.fromisoformat(since), time.min, UTC),
+            until=datetime.combine(date.fromisoformat(until), time.max, UTC),
+            altitude=Altitude.from_str(altitude),
+        )
+        settings = load_settings()
+        registry = Registry.load(settings.models_config)
+        if local_only:
+            typer.echo(
+                "Using saved sources only; GitHub completeness and freshness are not checked.",
+                err=True,
+            )
+        else:
+            typer.echo("Refreshing repository PRs from GitHub ...", err=True)
+            client = PatClient(settings.github_token, base_url=settings.github_api_base)
+        with connect(settings.database_url) as conn:
+            # Each snapshot/report is durable independently, including failed attempts.
+            conn.autocommit = True
+            inputs = resolve_reports(
+                conn,
+                query,
+                registry=registry,
+                prompt=latest_prompt(settings.prompts_dir, "pr_summary"),
+                retention=settings.llm_payload_retention,
+                client=client,
+            )
+            result = aggregate_reports(
+                inputs,
+                query=query,
+                store=PostgresAggregateStore(conn),
+                registry=registry,
+                prompt=latest_prompt(settings.prompts_dir, "aggregate"),
+                retention=settings.llm_payload_retention,
+                force=regenerate,
+            )
+        if result.report is None:
+            typer.echo("0 PRs merged in this window. No model call needed.")
+        else:
+            typer.echo(
+                f"Aggregate {result.report.id}; aggregate model calls: {result.calls}; "
+                f"cached reports: {result.cache_hits}"
+            )
+            typer.echo(f"Inspect: altiscope show-aggregate {result.report.id}")
+    except (ValueError, RuntimeError, RoutingError, PlanningError, psycopg.Error, OSError) as exc:
+        typer.echo(f"Could not aggregate: {exc}", err=True)
+        raise typer.Exit(1) from None
+    finally:
+        if client is not None:
+            client.close()
+
+
+@app.command("show-aggregate")
+def show_aggregate(
+    report_id: str,
+    verbose: Annotated[
+        bool, typer.Option(help="Include model, exact prompt, settings, and call history")
+    ] = False,
+) -> None:
+    """Inspect a saved aggregate and the exact report versions it used."""
+    from uuid import UUID
+
+    import psycopg
+
+    from altiscope.aggregate.render import render_aggregate
+    from altiscope.store.aggregates import PostgresAggregateStore
+    from altiscope.store.db import connect
+
+    try:
+        with connect(load_settings().database_url) as conn:
+            report = PostgresAggregateStore(conn).get(report_id)
+            typer.echo(render_aggregate(report, verbose=verbose), nl=False)
+            if verbose:
+                rows = conn.execute(
+                    "SELECT c.id,c.provider,c.model_id,c.started_at,c.stop_reason,c.error "
+                    "FROM aggregate_report_calls a JOIN llm_calls c ON c.id=a.call_id "
+                    "WHERE a.report_id=%s ORDER BY c.id",
+                    (UUID(report_id),),
+                ).fetchall()
+                typer.echo("Model-call attempts:")
+                for row in rows:
+                    typer.echo(
+                        f"  {row[0]}: {row[1]}/{row[2]} at {row[3]}; {row[4]}"
+                        + (f"; {row[5]}" if row[5] else "")
+                    )
+    except (ValueError, psycopg.Error) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from None
+
+
+@app.command("show-report")
+def show_report(
+    report_id: int,
+    verbose: Annotated[
+        bool, typer.Option(help="Include saved facts, input exclusions, and exact prompt")
+    ] = False,
+) -> None:
+    """Inspect a specific historical PR report, even after it has been regenerated."""
+    import json
+
+    import psycopg
+
+    from altiscope.store.db import connect
+
+    try:
+        with connect(load_settings().database_url) as conn:
+            row = conn.execute(
+                "SELECT s.narrative,p.html_url,p.snapshot_version,"
+                "c.provider,c.model_id,c.started_at,"
+                "v.name,v.source_text,s.facts,s.input_manifest,p.normalized_snapshot "
+                "FROM pr_summaries s JOIN pull_requests p ON p.id=s.pull_request_id "
+                "JOIN llm_calls c ON c.id=s.llm_call_id "
+                "JOIN prompt_versions v ON v.id=s.prompt_version_id "
+                "WHERE s.id=%s AND s.status='published'",
+                (report_id,),
+            ).fetchone()
+        if row is None:
+            raise ValueError("Published PR report not found")
+        typer.echo(f"PR report {report_id}; snapshot version {row[2]}")
+        typer.echo(row[1])
+        typer.echo(f"Author: {row[10].get('author_login', 'unknown')}")
+        typer.echo(f"Provider: {row[3]}; model: {row[4]}; generated: {row[5]}; prompt: {row[6]}")
+        typer.echo(row[0])
+        if verbose:
+            typer.echo("Saved facts and input exclusions:")
+            typer.echo(
+                json.dumps(dict(facts=row[8], input_manifest=row[9]), indent=2, sort_keys=True)
+            )
+            typer.echo("Exact prompt file:")
+            typer.echo(row[7])
+    except (ValueError, psycopg.Error) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from None
 
 
 if __name__ == "__main__":

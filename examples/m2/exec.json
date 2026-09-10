@@ -1,0 +1,10 @@
+{
+  "headline": "Billing resilience and operational visibility",
+  "narrative": "Billing changes add bounded recovery from temporary failures, duplicate-event protection, and failure diagnostics, supported by targeted tests.",
+  "sections": [
+    {
+      "heading": "Scope of the change",
+      "text": "The work strengthens processing controls and provides information for investigating failures. Customer and business outcomes have not been measured by these PRs."
+    }
+  ]
+}

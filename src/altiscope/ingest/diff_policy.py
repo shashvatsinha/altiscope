@@ -1,8 +1,9 @@
 """Select patch text for model input and record why files were excluded.
 
 Rules cover generated files, dependencies, unavailable patches, and size limits.
-The input manifest lists exclusions for the model. Displaying them to readers remains
-unbuilt. Keep rules conservative: excluded files may contain relevant changes.
+The input manifest lists exclusions for the model. The CLI shows the exclusion count
+and displays the saved manifest in verbose output.
+Keep rules conservative: excluded files may contain relevant changes.
 """
 
 from __future__ import annotations

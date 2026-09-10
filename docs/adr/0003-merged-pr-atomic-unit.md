@@ -1,6 +1,8 @@
 # ADR-0003: Summarize one merged pull request at a time
 
-Status: proposed
+Status: proposed; partly superseded (see below).
+
+Version and cache rules are now defined in [ADR-0011](0011-aggregate-report-provenance.md). New reports use the latest successful inputs; old reports keep their original inputs.
 
 ## Context
 

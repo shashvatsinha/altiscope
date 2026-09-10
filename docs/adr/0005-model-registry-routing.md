@@ -17,13 +17,13 @@ services. Configuration lets them choose models without changing pipeline code.
   endpoints. The same adapter kind can serve several configured endpoints. A native
   Gemini adapter could be added later.
 - Select structured-output mode from declared capabilities: `native`, `json_mode`, then
-  `prompt`. Record the mode used and check evidence references separately. Neither
-  schema validation nor reference validation establishes that a claim is accurate.
+  `prompt`. Record the mode used. Checking the response format does not establish
+  that its explanation is accurate.
 - Route to the first eligible model with room for the estimated input. Configure effort
   per stage. For verification, `model` excludes the producing model and `provider`
   excludes its configured provider.
 - Return a `RoutingDecision` with the chosen model and reason. Store it on `llm_calls`
-  with the prompt hash, usage, latency, and request ID when storage is implemented.
+  with the prompt hash, usage, latency, and request ID for PR and aggregate generation.
 - Providers implement `generate_structured` and `count_tokens`. Use a token-count
   endpoint where supported; otherwise estimate from character count.
 - Use prices for cost reporting. Routing follows capacity and preference, without
@@ -44,6 +44,6 @@ services. Configuration lets them choose models without changing pipeline code.
 - Endpoint compatibility depends on the server and its settings. A registry entry alone
   does not establish compatibility or output quality.
 - Character-based token estimates can be too low or too high. Complete-request budgeting
-  and handling oversized requests still need work.
+  is implemented; tree execution also checks actual intermediate report sizes.
 - Different models or providers may share errors. Evaluate defaults on human-reviewed
   examples; that evaluation workflow remains unbuilt.
