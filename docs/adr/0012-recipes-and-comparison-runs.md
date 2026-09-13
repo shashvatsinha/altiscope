@@ -293,11 +293,15 @@ Never substitute another assessor when the declared one fails independence or
 budget checks. Missing assessment is the absence of an assessment invocation;
 preflight/execution failure is a persisted failed assessment with errors; a valid
 but undecidable verdict is inconclusive. None invalidates the generated result.
-Assessment failure is not disagreement. #45 owns the new versioned verdict/rationale
-output schema and prompt; #47 owns evaluation labels and adjudication. Store parsed
+Assessment failure is not disagreement. Following #45, the new whole-result response
+uses `agree`, `disagree` or `inconclusive` plus rationale; #45 owns the versioned
+schema, rubric and prompt, and #47 owns human evaluation labels and adjudication. Store parsed
 verdict/rationale separately from raw calls, with zero-or-more ordered attempt links,
 the same bounded repair/accounting rules and independence evidence. M3 assessment
 requests create new records; automatic assessment-result caching is out of scope.
+Record the requesting invocation/member when assessment is part of a comparison;
+a standalone assessment has its own request identity and is not charged to the
+target result's historical origin invocation.
 
 A human review identifies result ID, reviewer identifier, protocol ID/version/hash,
 reader role, revision ID, previous revision ID, judgment/correction/rationale and
@@ -356,7 +360,7 @@ an empty tuple for zero attempts. Do not route through a live registry while sav
 | `comparison_members` | Invocation FK + ordinal unique; explicit recipe FK; unique recipe per invocation; pending initially, then immutable generated/reused result link |
 | `comparison_run_results` | PK; unique origin-member FK; source/recipe FKs; status, output/schema/hash, errors, cache identity and timestamps |
 | `comparison_result_calls` | Result FK + positive ordinal PK; call FK unique; every attempt in order |
-| `comparison_assessments` | PK; target-result and assessor-recipe FKs; frozen input, independence evidence, status, parsed verdict/rationale/schema, errors and timestamps |
+| `comparison_assessments` | PK; target-result and assessor-recipe FKs; requesting invocation/member or standalone request identity; frozen input, independence evidence, status, parsed verdict/rationale/schema, errors and timestamps |
 | `comparison_assessment_calls` | Assessment FK + positive ordinal PK; call FK unique |
 | `review_sessions`, `review_revisions`, `assessment_exposures` | Result/reviewer/protocol identity, retained protocol payload/reference, ordered exposure events and append-only review revisions with prior-revision/exposure FKs |
 
@@ -453,7 +457,7 @@ identity before assessment. Disabling hidden transport retries makes attempted-c
 accounting explicit, at the cost of less transient-error resilience in comparisons.
 
 #47 still must choose the human rubric, effort fields, dataset and reviewer arrangement;
-#45 must define the assessment response vocabulary and prompt. Those choices do not
+#45 must implement the assessment response schema, rubric and prompt. Those choices do not
 authorize a storage migration or placeholder assessment recipe here. Record changes
 to this proposal and affected issue text before dependent sessions use a different
 contract. After acceptance, material reversals require a superseding ADR.
