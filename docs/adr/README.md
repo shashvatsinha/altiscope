@@ -27,4 +27,4 @@ link it from the old one so the reasoning remains available.
 | [0009](0009-m1-publication-contract.md) | Earlier claim-based PR output | Superseded by 0010 |
 | [0010](0010-pr-review-provenance.md) | Overall PR reports and generation history | Accepted |
 | [0011](0011-aggregate-report-provenance.md) | Record all report inputs and preserve versions | Accepted |
-| [0012](0012-recipes-and-comparison-runs.md) | Pin recipes and sources; preserve comparison results, reuse and review | Proposed |
+| [0012](0012-recipes-and-comparison-runs.md) | Pin recipes and sources; preserve comparison results, reuse and review | Accepted |

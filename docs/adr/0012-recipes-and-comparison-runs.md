@@ -1,6 +1,7 @@
 # ADR-0012: Pin recipes and sources, and preserve comparison results
 
-Status: Proposed (2026-09-13; owner acceptance pending).
+Status: Accepted (owner decision on 2026-09-13, recorded for
+[PR #51](https://github.com/shashvatsinha/altiscope/pull/51)).
 
 Issue: [#41](https://github.com/shashvatsinha/altiscope/issues/41), within
 [M3](https://github.com/shashvatsinha/altiscope/issues/6).
@@ -9,11 +10,9 @@ Extends [ADR-0010](0010-pr-review-provenance.md) and
 execution, this proposes replacing ADR-0005's candidate routing and registry-key
 independence with the rules below. Production routing remains as implemented.
 
-This is a design contract, not an implemented feature. Following the
-[ADR status convention](README.md), acceptance requires an explicit owner decision.
-Record its date, decision and durable issue/PR reference here, and update the index,
-before treating the new product decisions as accepted. Passing checks or merging a
-proposal does not by itself supply owner acceptance.
+This is an accepted design contract, not an implemented feature. The owner accepted
+the recommendations in this record on 2026-09-13 after reviewing the proposed ADR in
+PR #51. Implementation remains tracked by the downstream M3 issues.
 
 ## Why and recommendation
 
@@ -446,9 +445,9 @@ Subsequent validation belongs to the implementation issues:
   human evidence and complete the M3 demonstration/release. Offline tests and synthetic
   demos use controlled fixtures without paid calls.
 
-## Decisions awaiting owner acceptance and remaining work
+## Accepted decisions and remaining work
 
-Recommend accepting the contracts above, particularly single-step aggregate scope,
+The owner accepted the contracts above, including single-step aggregate scope,
 fail-closed unknown-model independence, and separate result/reuse/review identity.
 Single-step comparisons isolate composition on common inputs and reuse the existing
 node generator; they do not measure whole-tree quality. Rejecting unknown identity
