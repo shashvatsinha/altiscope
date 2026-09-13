@@ -177,7 +177,11 @@ jobs and recovery from a process crash are also future work.
 Automated tests check collection, report formatting, retry limits, provider failures,
 and storage history. The checked-in demo uses a synthetic source and hand-authored
 response. These checks exercise the software; usefulness and accuracy need human
-review of real generated reports. The planned 20-PR study belongs to M3.
+review of real generated reports. M3's versioned
+[evaluation protocol](evaluation/m3-protocol-v1.md) and
+[selected 20-PR set](evaluation/m3-eval-set-v1.md) define that future review without
+claiming it has run. Final source/recipe freeze, generation, judgments, and reporting
+remain issue #50's work.
 
 ## 10. Open questions
 
