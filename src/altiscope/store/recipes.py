@@ -132,10 +132,12 @@ class FrozenPricing(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     currency: Literal["USD"]
-    input_usd_per_mtok: float
-    output_usd_per_mtok: float
+    input_usd_per_mtok: float = Field(ge=0)
+    output_usd_per_mtok: float = Field(ge=0)
+    cache_read_usd_per_mtok: float | None = Field(default=None, ge=0)
+    cache_write_usd_per_mtok: float | None = Field(default=None, ge=0)
     units: Literal["per_million_tokens"]
-    cache_token_treatment: Literal["ordinary_input_rate"]
+    cache_token_treatment: Literal["separate_configured_rates", "ordinary_input_rate"]
     estimator_version: str
     status: Literal["configured_estimate", "unavailable"]
     provenance: Literal["model_registry"]
@@ -189,6 +191,8 @@ class FrozenExecutionConfig(BaseModel):
             max_output_tokens=self.model.max_output_tokens,
             input_usd_per_mtok=self.pricing.input_usd_per_mtok,
             output_usd_per_mtok=self.pricing.output_usd_per_mtok,
+            cache_read_usd_per_mtok=self.pricing.cache_read_usd_per_mtok,
+            cache_write_usd_per_mtok=self.pricing.cache_write_usd_per_mtok,
             capabilities=set(self.model.capabilities),
             underlying_model_id=self.model.underlying_model_id,
             underlying_model_evidence=self.model.underlying_model_evidence,
@@ -378,9 +382,11 @@ def _resolved_config(
             currency="USD",
             input_usd_per_mtok=model.input_usd_per_mtok,
             output_usd_per_mtok=model.output_usd_per_mtok,
+            cache_read_usd_per_mtok=model.cache_read_usd_per_mtok,
+            cache_write_usd_per_mtok=model.cache_write_usd_per_mtok,
             units="per_million_tokens",
-            cache_token_treatment="ordinary_input_rate",
-            estimator_version="configured-token-rates-v1",
+            cache_token_treatment="separate_configured_rates",
+            estimator_version="configured-token-rates-v2",
             status=pricing_status,
             provenance="model_registry",
         ),
@@ -468,16 +474,28 @@ def create_recipe(
         schema=schema,
         overrides=overrides or RecipeOverrides(),
     )
+    return _insert_recipe(conn, name=clean_name, prompt=prompt, schema=schema, config=config)
+
+
+def _insert_recipe(
+    conn: psycopg.Connection,
+    *,
+    name: str,
+    prompt: Prompt,
+    schema: SchemaRegistration,
+    config: FrozenExecutionConfig,
+) -> RecipeVersion:
+    """Insert one already-resolved immutable recipe configuration."""
     configuration = config.model_dump(mode="json")
     digest = _hash_json(configuration)
     recipe_id = uuid4()
     with conn.transaction():
-        conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (clean_name,))
+        conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (name,))
         prompt_id = _save_prompt(conn, prompt)
         schema_id = _save_schema(conn, schema)
         row = conn.execute(
             "SELECT COALESCE(max(version),0)+1 FROM recipe_versions WHERE name=%s",
-            (clean_name,),
+            (name,),
         ).fetchone()
         assert row is not None
         version = int(row[0])
@@ -488,7 +506,7 @@ def create_recipe(
             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (
                 recipe_id,
-                clean_name,
+                name,
                 version,
                 prompt.stage,
                 prompt_id,
@@ -500,7 +518,7 @@ def create_recipe(
         )
     return RecipeVersion(
         recipe_id,
-        clean_name,
+        name,
         version,
         prompt.stage,
         prompt_id,
@@ -510,6 +528,37 @@ def create_recipe(
         prompt,
         schema.output_type,
     )
+
+
+def create_recipe_variant(
+    conn: psycopg.Connection,
+    *,
+    name: str,
+    base: RecipeVersion,
+    prompt: Prompt,
+) -> RecipeVersion:
+    """Create a prompt-only variant while preserving every other frozen setting."""
+    clean_name = name.strip()
+    if not clean_name:
+        raise ValueError("recipe name must not be blank")
+    if not prompt.body.strip() or not prompt.source_text.strip():
+        raise ValueError("recipe prompt content must not be blank")
+    if prompt.stage != base.stage:
+        raise ValueError("recipe variant prompt must match the base recipe stage")
+    schema = registered_schema(prompt.stage, prompt.schema_version)
+    if (
+        schema.contract_id != base.config.output_contract.contract_id
+        or schema.version != base.config.output_contract.version
+    ):
+        raise ValueError("recipe variant must preserve the base output contract")
+    config = base.config.model_copy(
+        update={
+            "prompt_hash": prompt.content_hash,
+            "prompt_version": prompt.version,
+            "prompt_source_path": str(prompt.path),
+        }
+    )
+    return _insert_recipe(conn, name=clean_name, prompt=prompt, schema=schema, config=config)
 
 
 def load_recipe(
@@ -528,13 +577,17 @@ def load_recipe(
     ).fetchone()
     if row is None:
         raise ValueError("recipe version not found")
-    config = FrozenExecutionConfig.model_validate(row[6])
-    if _hash_json(config.model_dump(mode="json")) != row[7]:
+    if _hash_json(row[6]) != row[7]:
         raise ValueError("stored recipe configuration hash mismatch")
+    config = FrozenExecutionConfig.model_validate(row[6])
     if hashlib.sha256(str(row[11]).encode()).hexdigest() != row[9]:
         raise ValueError("stored recipe prompt hash mismatch")
+    if config.prompt_hash != row[9] or config.prompt_version != row[8]:
+        raise ValueError("stored recipe prompt identity differs from its frozen configuration")
     if _hash_json(row[16]) != row[14]:
         raise ValueError("stored output schema hash mismatch")
+    if config.output_contract.schema_hash != row[14]:
+        raise ValueError("stored recipe schema differs from its frozen configuration")
     stage: Stage = row[3]
     schema = registered_schema(stage, int(row[13]))
     if require_executable:

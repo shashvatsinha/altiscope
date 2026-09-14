@@ -26,6 +26,8 @@ models:
     max_output_tokens: 128000
     input_usd_per_mtok: 2
     output_usd_per_mtok: 10
+    cache_read_usd_per_mtok: 0.2
+    cache_write_usd_per_mtok: 2.5
     capabilities: [json_schema, reasoning_effort, token_counting]
     underlying_model_id: anthropic/claude-sonnet-5
     underlying_model_evidence: configured direct publisher model name
@@ -38,6 +40,8 @@ models:
     max_output_tokens: 128000
     input_usd_per_mtok: 2
     output_usd_per_mtok: 10
+    cache_read_usd_per_mtok: 0.2
+    cache_write_usd_per_mtok: 2.5
     capabilities: [json_schema]
     underlying_model_id: anthropic/claude-sonnet-5
     underlying_model_evidence: configured OpenRouter publisher/model mapping
@@ -62,6 +66,8 @@ models:
     max_output_tokens: 65536
     input_usd_per_mtok: 0.3
     output_usd_per_mtok: 2.5
+    cache_read_usd_per_mtok: 0.03
+    cache_write_usd_per_mtok: 0.08333
     capabilities: [json_schema]
     underlying_model_id: google/gemini-2.5-flash
     underlying_model_evidence: configured OpenRouter publisher/model mapping

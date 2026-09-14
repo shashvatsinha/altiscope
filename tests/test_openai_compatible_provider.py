@@ -73,6 +73,14 @@ def _model(*caps: str) -> ModelSpec:
     )
 
 
+def test_comparison_mode_can_disable_sdk_transport_retries():
+    provider = OpenAICompatibleProvider(
+        ProviderSpec(name="local", kind="openai_compatible", base_url="http://fake/v1"),
+        transport_retry_limit=0,
+    )
+    assert provider._client.max_retries == 0  # pyright: ignore[reportPrivateUsage]
+
+
 def test_native_mode_sends_json_schema_and_parses():
     server = FakeServer(_completion('{"headline": "h", "count": 3}'))
     result = _provider(server).generate_structured(

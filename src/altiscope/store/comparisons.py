@@ -16,16 +16,18 @@ from pydantic import BaseModel
 
 from altiscope.aggregate.generate import AggregateAttempt
 from altiscope.aggregate.inputs import ReportInput
+from altiscope.llm.execution import StructuredAttempt
 from altiscope.store.aggregates import PostgresAggregateStore, load_pr_input
 from altiscope.store.calls import save_recipe_calls
 from altiscope.store.recipes import RecipeVersion, load_recipe
 from altiscope.summarize.generate import Attempt
 
 ResultStatus = Literal["succeeded", "preflight_failed", "invalid_output", "refused", "failed"]
+ConditionLabel = Literal["candidate", "primary_baseline", "model_comparison"]
 AssessmentStatus = Literal[
     "succeeded", "preflight_failed", "invalid_output", "refused", "failed", "inconclusive"
 ]
-Attempts = tuple[Attempt, ...] | tuple[AggregateAttempt, ...]
+Attempts = tuple[Attempt, ...] | tuple[AggregateAttempt, ...] | tuple[StructuredAttempt, ...]
 _ERROR_CODES = {
     "oversized_input",
     "budget_exceeded",
@@ -82,6 +84,8 @@ class InvocationMember:
     id: UUID
     ordinal: int
     recipe_version_id: UUID
+    condition_label: ConditionLabel = "candidate"
+    baseline_for_recipe_version_ids: tuple[UUID, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -113,6 +117,9 @@ class StoredResult:
     output: dict[str, object] | None
     output_hash: str | None
     call_ids: tuple[int, ...]
+    error_code: str | None = None
+    error_message: str | None = None
+    origin_retention: Literal["full", "hashes_only"] = "full"
 
 
 @dataclass(frozen=True)
@@ -379,6 +386,8 @@ def create_invocation(
     retention: Literal["full", "hashes_only"],
     execution_build: str,
     protocol_artifact_id: UUID | None = None,
+    condition_labels: dict[UUID, ConditionLabel] | None = None,
+    baseline_targets: dict[UUID, tuple[UUID, ...]] | None = None,
 ) -> ComparisonInvocation:
     if len(recipe_version_ids) < 2 or len(set(recipe_version_ids)) != len(recipe_version_ids):
         raise ValueError("a comparison requires at least two distinct recipe versions")
@@ -386,6 +395,14 @@ def create_invocation(
         raise ValueError("unknown payload retention policy")
     invocation_id = uuid4()
     members: list[InvocationMember] = []
+    labels = condition_labels or {}
+    targets = baseline_targets or {}
+    unknown_metadata = (set(labels) | set(targets)) - set(recipe_version_ids)
+    if unknown_metadata:
+        raise ValueError("comparison member metadata names a recipe outside the invocation")
+    allowed_targets = set(recipe_version_ids)
+    if any(set(values) - allowed_targets for values in targets.values()):
+        raise ValueError("baseline metadata targets a recipe outside the invocation")
     with conn.transaction():
         source = load_source(conn, source_id)
         recipes = [load_recipe(conn, recipe_id) for recipe_id in recipe_version_ids]
@@ -398,6 +415,16 @@ def create_invocation(
             "retention": retention,
             "experiment_scope": "single_step",
             "execution_build": execution_build,
+            "members": [
+                {
+                    "recipe_version_id": str(recipe_id),
+                    "condition_label": labels.get(recipe_id, "candidate"),
+                    "baseline_for_recipe_version_ids": [
+                        str(value) for value in targets.get(recipe_id, ())
+                    ],
+                }
+                for recipe_id in recipe_version_ids
+            ],
         }
         conn.execute(
             "INSERT INTO comparison_invocations"
@@ -415,16 +442,50 @@ def create_invocation(
             ),
         )
         for ordinal, recipe_id in enumerate(recipe_version_ids, 1):
-            member = InvocationMember(uuid4(), ordinal, recipe_id)
+            label = labels.get(recipe_id, "candidate")
+            baseline_for = targets.get(recipe_id, ())
+            member = InvocationMember(uuid4(), ordinal, recipe_id, label, baseline_for)
             conn.execute(
-                "INSERT INTO comparison_members(id,invocation_id,ordinal,recipe_version_id) "
-                "VALUES(%s,%s,%s,%s)",
-                (member.id, invocation_id, ordinal, recipe_id),
+                "INSERT INTO comparison_members"
+                "(id,invocation_id,ordinal,recipe_version_id,condition_label) "
+                "VALUES(%s,%s,%s,%s,%s)",
+                (member.id, invocation_id, ordinal, recipe_id, label),
             )
+            for target in baseline_for:
+                conn.execute(
+                    "INSERT INTO comparison_member_baseline_targets"
+                    "(member_id,recipe_version_id) VALUES(%s,%s)",
+                    (member.id, target),
+                )
             members.append(member)
     return ComparisonInvocation(
         invocation_id, source_id, source.stage, force_rerun, retention, tuple(members)
     )
+
+
+def complete_invocation(conn: psycopg.Connection, invocation_id: UUID) -> None:
+    """Finalize an invocation only after every frozen member has an outcome."""
+    with conn.transaction():
+        row = conn.execute(
+            "SELECT status FROM comparison_invocations WHERE id=%s FOR UPDATE",
+            (invocation_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("comparison invocation not found")
+        if row[0] != "running":
+            raise ValueError("comparison invocation is already finalized")
+        pending = conn.execute(
+            "SELECT count(*) FROM comparison_members "
+            "WHERE invocation_id=%s AND disposition='pending'",
+            (invocation_id,),
+        ).fetchone()
+        assert pending is not None
+        status = "completed" if int(pending[0]) == 0 else "incomplete"
+        conn.execute(
+            "UPDATE comparison_invocations SET status=%s,completed_at=clock_timestamp() "
+            "WHERE id=%s",
+            (status, invocation_id),
+        )
 
 
 def comparison_cache_key(source: ComparisonSource, recipe: RecipeVersion) -> str:
@@ -560,7 +621,16 @@ def save_result(
             (result_id, len(call_ids), total_cost, cost_status, member_id),
         )
     return StoredResult(
-        result_id, source_id, recipe_id, terminal.status, output_document, output_hash, call_ids
+        result_id,
+        source_id,
+        recipe_id,
+        terminal.status,
+        output_document,
+        output_hash,
+        call_ids,
+        error_code,
+        error_message,
+        retention,  # type: ignore[arg-type]
     )
 
 
@@ -585,8 +655,10 @@ def reuse_result(conn: psycopg.Connection, *, member_id: UUID, result_id: UUID) 
 
 def load_result(conn: psycopg.Connection, result_id: UUID | str) -> StoredResult:
     row = conn.execute(
-        "SELECT id,source_id,recipe_version_id,status,output_document,output_hash "
-        "FROM comparison_run_results WHERE id=%s",
+        "SELECT r.id,r.source_id,r.recipe_version_id,r.status,r.output_document,r.output_hash,"
+        "r.error_code,r.error_message,i.retention FROM comparison_run_results r "
+        "JOIN comparison_members m ON m.id=r.origin_member_id "
+        "JOIN comparison_invocations i ON i.id=m.invocation_id WHERE r.id=%s",
         (UUID(str(result_id)),),
     ).fetchone()
     if row is None:
@@ -603,6 +675,9 @@ def load_result(conn: psycopg.Connection, result_id: UUID | str) -> StoredResult
         row[4],
         str(row[5]) if row[5] is not None else None,
         tuple(int(call[0]) for call in calls),
+        str(row[6]) if row[6] is not None else None,
+        str(row[7]) if row[7] is not None else None,
+        row[8],
     )
 
 

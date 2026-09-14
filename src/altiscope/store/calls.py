@@ -12,6 +12,7 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel
 
 from altiscope.aggregate.generate import AggregateAttempt
+from altiscope.llm.execution import StructuredAttempt
 from altiscope.llm.registry import Registry
 from altiscope.llm.router import RoutingDecision
 from altiscope.llm.tokens import estimate_tokens
@@ -124,7 +125,7 @@ def save_calls(
 def save_recipe_calls(
     conn: psycopg.Connection,
     *,
-    attempts: tuple[Attempt, ...] | tuple[AggregateAttempt, ...],
+    attempts: tuple[Attempt, ...] | tuple[AggregateAttempt, ...] | tuple[StructuredAttempt, ...],
     recipe: RecipeVersion,
     retention: str,
     snapshot_id: int | None = None,
@@ -159,16 +160,31 @@ def save_recipe_calls(
             result.usage.cache_write_tokens,
         )
         usage_status = "measured" if any(usage_values) else "unavailable"
+        cache_pricing_complete = (
+            result.usage.cache_read_tokens == 0
+            or config.pricing.cache_read_usd_per_mtok is not None
+        ) and (
+            result.usage.cache_write_tokens == 0
+            or config.pricing.cache_write_usd_per_mtok is not None
+        )
         cost_status = (
             "complete"
-            if usage_status == "measured" and config.pricing.status == "configured_estimate"
+            if (
+                usage_status == "measured"
+                and config.pricing.status == "configured_estimate"
+                and cache_pricing_complete
+            )
             else "unavailable"
         )
         cost = None
         if cost_status == "complete":
+            cache_read_rate = config.pricing.cache_read_usd_per_mtok or 0
+            cache_write_rate = config.pricing.cache_write_usd_per_mtok or 0
             cost = (
                 result.usage.input_tokens * config.pricing.input_usd_per_mtok
                 + result.usage.output_tokens * config.pricing.output_usd_per_mtok
+                + result.usage.cache_read_tokens * cache_read_rate
+                + result.usage.cache_write_tokens * cache_write_rate
             ) / 1_000_000
         call_id = insert(
             conn,

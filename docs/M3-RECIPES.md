@@ -1,4 +1,4 @@
-# M3 recipes and comparison persistence
+# M3 recipes and comparison execution
 
 M3 recipes are immutable, named versions of one resolved generation configuration.
 The recipe stores the complete prompt source, output schema document, provider
@@ -54,8 +54,71 @@ assessment exposure events. A guided assessment reveal is rejected until the ini
 review revision is committed.
 
 Migrations `0007_comparison_persistence.sql` through
-`0009_comparison_source_pr_links.sql` are append-only. They preserve all M1/M2
+`0011_call_cost_precision.sql` are append-only. They preserve all M1/M2
 rows, add nullable call measurement metadata and isolated M3 tables, and retain
-underlying PR links for every frozen aggregate input. Later
-assessment schema registration and comparison execution are owned by #44/#45;
-this storage layer deliberately does not invent an assessment recipe.
+underlying PR links for every frozen aggregate input. Whole-result assessment schema
+registration remains owned by #45; this work does not invent an assessment recipe.
+
+## Run a comparison
+
+First freeze a source through `freeze_pr_source` or `freeze_aggregate_source`. The
+former accepts one immutable saved PR snapshot and its preparation; the latter
+accepts an ordered, nonempty set of exact successful saved report versions, the
+query, altitude, and the already-rendered single-step request. Source preparation
+happens once. Comparison execution never refreshes GitHub, selects newer reports,
+or builds a hidden aggregate tree.
+
+Register the ordinary minimal prompt as each candidate recipe's primary baseline.
+The command creates a prompt-only immutable variant, or shares an existing variant
+when the complete non-prompt generation condition is identical:
+
+```bash
+altiscope recipes baseline 11111111-1111-1111-1111-111111111111
+altiscope recipes baseline 22222222-2222-2222-2222-222222222222
+```
+
+The shipped baseline prompts are `prompts/baseline/pr_summary-v1.md` and
+`prompts/baseline/aggregate-v1.md`. They use the same output contracts and preserve
+the prohibition on evaluating people. Their recorded rationale is that the model,
+endpoint, schema, generation settings, input preparation, and aggregate scope are
+held fixed while the prompt becomes an ordinary minimal summary request.
+
+Run at least two explicit, exact recipe versions against the frozen source. Assigned
+primary baselines are included by default and deduplicated before the invocation is
+saved, including a baseline already listed explicitly:
+
+```bash
+altiscope comparisons run SOURCE_UUID \
+  --recipe 11111111-1111-1111-1111-111111111111 \
+  --recipe 22222222-2222-2222-2222-222222222222
+```
+
+Use `--regenerate` to bypass successful comparison results and create new immutable
+results. Use `--no-baselines` only for an explicitly unbaselined engine run. A normal
+rerun reuses successful compatible results with zero new calls; failed results are
+not cached. The command labels prompt-only baselines separately from explicit recipes
+that change the model condition. It reports current calls, current configured-price
+cost estimates, independent wall time, and historical origin figures for reused
+results. Missing usage or price information is reported as unavailable, never zero.
+
+Each recipe runs once with at most its one configured malformed-output replacement.
+Complete-request budgets include system text, the exact frozen user text, schema, and
+envelope allowance. Oversized and credential failures have zero calls. A failed member
+does not remove successful siblings. Comparison adapters use zero hidden transport
+retries, and comparison results never become production-current reports.
+
+The comparison service is also available as `altiscope.comparison.run_comparison`.
+Tests inject `FixtureProvider` instances into its `provider_factory`, so the complete
+workflow is exercised offline without live or paid model calls.
+
+Primary baselines are controls for the observed recipe outputs, not proof that one
+prompt caused a difference in a stochastic sample. M3 intentionally has no numeric
+confidence fields. Confidence reporting would require a separately specified sampling
+and evaluation method; the M3 protocol instead reports case-level counts, medians,
+ranges, missingness, and limitations.
+
+Configured-price estimates rate ordinary input, output, cache-read, and cache-write
+tokens separately. Cache rates are optional registry data because availability and
+price vary by model and provider. If a call reports cache usage without the matching
+frozen cache rate, its cost and the containing comparison total are unavailable; the
+system never substitutes the ordinary input rate.

@@ -11,11 +11,16 @@ The model writes the explanation. The application records which reports it read.
 
 ## 1. Implementation status
 
-**M1 implements the single-PR workflow. M2 now implements repository summaries.**
+**M1 implements the single-PR workflow. M2 implements repository summaries.**
 M2 includes the migration, repository identity, and validation diagnostic fixes from
 PRs #35, #36, and #37. The owner accepted the engineer and manager samples for
 inclusion on 2026-09-10. See the [M2 walkthrough](M2-WALKTHROUGH.md) and
 [release evidence](releases/m2.md).
+
+The M3 integration branch also has immutable recipes, frozen comparison sources,
+reproducible comparison execution, and prompt-only primary baselines. M3 is not a
+released milestone: assessment, human review UI, rich inspection, the final study,
+and release evidence remain open.
 
 | Workflow | Available now |
 |---|---|
@@ -24,10 +29,11 @@ inclusion on 2026-09-10. See the [M2 walkthrough](M2-WALKTHROUGH.md) and
 | Combined reports | Route and execute single- or multi-level summaries, with cached results |
 | Inspection | CLI drill-down through exact input versions to PR reports and GitHub links |
 | History | Shared prompt/model-call records, with new versions created on request |
+| Experimental comparisons | Run exact recipe versions on one frozen PR or aggregate source, with isolated cache/history and default prompt-only baselines |
 | Demonstration | Credential-free engineer, manager, executive, and multi-level examples |
 
 The [M1 walkthrough](M1-WALKTHROUGH.md) covers individual PR commands. The
-[roadmap](ROADMAP.md) covers later work, including a web interface and model evaluation.
+[roadmap](ROADMAP.md) covers later work, including assessment and a web interface.
 
 ## 2. From source to report
 
@@ -191,9 +197,9 @@ new PR reports. `--local-only` explicitly uses saved snapshots and does not prom
 remote completeness or freshness. GitHub does not provide a simultaneous read of an
 entire repository, so edits during collection remain an operational limitation.
 
-Later work includes report comparison and manual version selection, optional model
-assessment, feedback, private access, operational retention settings, and the web
-interface. The current decisions do not settle those product details.
+Later work includes rich comparison inspection, manual production input-version
+selection, optional model assessment, feedback, private access, operational retention
+settings, and the web interface. The current decisions do not settle those product details.
 
 ## 11. M2 execution and storage
 
@@ -227,6 +233,32 @@ versions are kept. This is synchronous execution, not a durable background job s
 `show-report ID` opens an exact historical PR report. Both support `--verbose` for
 generation details. The aggregate view lists all underlying GitHub PR links and their
 code-computed count. It does not ask the model to choose links or calculate coverage.
+
+## 12. M3 comparison execution and baselines
+
+A comparison source freezes either one prepared PR snapshot or one ordered set of exact
+saved reports plus its query, altitude, and fully rendered single-step aggregate input.
+Every member receives that same saved text. Execution does not collect sources, select
+newer reports, truncate inputs, or build an aggregate tree.
+
+Each invocation records at least two explicit recipe versions and expands their assigned
+primary baselines before freezing membership. A baseline is a prompt-only recipe variant:
+the model, endpoint, output schema, generation settings, input budget, pricing basis,
+and implementation versions remain identical. Shared and explicitly listed baselines
+are deduplicated. Member metadata distinguishes candidates, primary baselines, and
+model-changing comparisons for later inspection.
+
+The engine constructs one provider from each frozen recipe, disables hidden SDK transport
+retries, and permits only the recorded malformed-output replacement. It saves all actual
+attempts and parsed output. Preflight failures have no invented calls, and one failed
+member does not erase successful siblings. Only successful comparison results can be
+reused; `--regenerate` creates new immutable results.
+
+Comparison cache keys and tables are separate from production reports. A cache hit has
+zero current calls and cost while retaining its origin calls, configured-price estimate,
+latency, and payload-retention limitation. Comparison writes never update production
+current reports. See [M3 recipes and comparison execution](M3-RECIPES.md) and
+[ADR-0012](adr/0012-recipes-and-comparison-runs.md).
 
 The credential-free demo uses this same engine with an in-memory store; `--persist`
 uses Postgres. Human sample review and milestone release integration remain separate
