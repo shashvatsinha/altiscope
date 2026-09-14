@@ -15,6 +15,9 @@ models:
     input_usd_per_mtok: 2
     output_usd_per_mtok: 10
     capabilities: [json_schema, reasoning_effort, token_counting]
+    underlying_model_id: anthropic/claude-sonnet-5
+    underlying_model_evidence: configured direct publisher model name
+    model_version_kind: mutable_alias
 input_budget_fraction: 0.75
 stages:
   pr_summary:

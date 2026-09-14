@@ -27,6 +27,9 @@ models:
     input_usd_per_mtok: 2
     output_usd_per_mtok: 10
     capabilities: [json_schema, reasoning_effort, token_counting]
+    underlying_model_id: anthropic/claude-sonnet-5
+    underlying_model_evidence: configured direct publisher model name
+    model_version_kind: mutable_alias
   openrouter-anthropic:
     provider: openrouter
     model_name: anthropic/claude-sonnet-5
@@ -36,6 +39,9 @@ models:
     input_usd_per_mtok: 2
     output_usd_per_mtok: 10
     capabilities: [json_schema]
+    underlying_model_id: anthropic/claude-sonnet-5
+    underlying_model_evidence: configured OpenRouter publisher/model mapping
+    model_version_kind: mutable_alias
   openrouter-openai:
     provider: openrouter
     model_name: openai/gpt-5.5
@@ -45,6 +51,9 @@ models:
     input_usd_per_mtok: 5
     output_usd_per_mtok: 30
     capabilities: [json_schema]
+    underlying_model_id: openai/gpt-5.5
+    underlying_model_evidence: configured OpenRouter publisher/model mapping
+    model_version_kind: mutable_alias
   openrouter-google:
     provider: openrouter
     model_name: google/gemini-2.5-flash
@@ -54,6 +63,9 @@ models:
     input_usd_per_mtok: 0.3
     output_usd_per_mtok: 2.5
     capabilities: [json_schema]
+    underlying_model_id: google/gemini-2.5-flash
+    underlying_model_evidence: configured OpenRouter publisher/model mapping
+    model_version_kind: mutable_alias
 
 # Scale the context window by this fraction, then subtract the stage's reserved
 # output tokens to get the input budget. Request-size estimates need to include overhead.

@@ -41,3 +41,11 @@ Use this bounded recovery procedure for one missing version at a time:
 
 Replace the example only with the exact verified missing filename stem. Never mark a
 later version in the same recovery transaction or edit an existing migration file.
+
+Migration `0007_comparison_persistence` adds the M3 recipe, frozen-source,
+comparison-result, assessment, and human-review tables. It also adds nullable usage,
+cost, pricing-basis, and actual-output-mode fields to `llm_calls`; existing M1/M2
+call rows remain valid and retain their original values. Migration `0008_comparison_integrity`
+tightens nullable hash/error checks and adds the exact result/source review foreign key.
+Migration `0009_comparison_source_pr_links` retains the deterministic underlying PR URL
+array for each frozen comparison input and backfills it from saved report lineage.
