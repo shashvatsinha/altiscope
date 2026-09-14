@@ -13,7 +13,7 @@ from uuid import UUID
 import psycopg
 
 from altiscope.llm.credentials import api_key
-from altiscope.llm.execution import StructuredExecution, execute_structured_request
+from altiscope.llm.execution import classify_structured_failure, execute_structured_request
 from altiscope.llm.provider import Provider
 from altiscope.llm.providers import build_provider
 from altiscope.store.baselines import is_primary_baseline, load_primary_baseline
@@ -122,25 +122,6 @@ def _default_provider(recipe: RecipeVersion) -> Provider:
     registry = recipe.config.to_registry()
     spec = registry.provider_for(recipe.config.model.registry_key)
     return build_provider(spec, transport_retry_limit=recipe.config.provider.transport_retry_limit)
-
-
-def _failure(execution: StructuredExecution) -> tuple[str, str, str]:
-    """Map a bounded generation outcome to persisted status/code/safe text."""
-    detail = execution.errors[0] if execution.errors else "generation failed"
-    if detail.startswith("oversized_input"):
-        if execution.attempts:
-            return "invalid_output", "budget_exceeded", detail
-        return "preflight_failed", "oversized_input", detail
-    stop = execution.attempts[-1].result.stop_reason if execution.attempts else "unknown"
-    if stop == "refusal":
-        return "refused", "refused", "provider refused the request"
-    if stop == "max_tokens":
-        return "failed", "truncation", "provider stopped at the output-token limit"
-    if stop == "transport_error":
-        return "failed", "transport", "provider transport failed"
-    if stop in ("end_turn", "invalid_output"):
-        return "invalid_output", "invalid_output", detail
-    return "failed", "internal_error", "provider returned an unsupported terminal status"
 
 
 def _measure_result(conn: psycopg.Connection, result_id: UUID) -> MemberMeasurements:
@@ -301,7 +282,7 @@ def run_comparison(
                             output=execution.output,
                         )
                     else:
-                        status, error_code, message = _failure(execution)
+                        status, error_code, message = classify_structured_failure(execution)
                         terminal = TerminalResult(
                             status,  # type: ignore[arg-type]
                             member_started,

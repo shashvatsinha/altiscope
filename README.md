@@ -65,4 +65,6 @@ M3's immutable recipe and reproducible comparison commands are documented in
 [`docs/M3-RECIPES.md`](docs/M3-RECIPES.md). They retain frozen prompts, schemas,
 provider/model settings, source inputs, result attempts, and review records without
 changing production report history. Prompt-only primary baselines are included by
-default and are labeled separately from model-changing comparisons.
+default and are labeled separately from model-changing comparisons. The M3 branch can
+also run an optional whole-result assessment with a distinct pinned underlying model;
+its output is stored separately and hidden by default for pre-judgment workflows.

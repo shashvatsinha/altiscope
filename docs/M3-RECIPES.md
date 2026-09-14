@@ -56,8 +56,9 @@ review revision is committed.
 Migrations `0007_comparison_persistence.sql` through
 `0011_call_cost_precision.sql` are append-only. They preserve all M1/M2
 rows, add nullable call measurement metadata and isolated M3 tables, and retain
-underlying PR links for every frozen aggregate input. Whole-result assessment schema
-registration remains owned by #45; this work does not invent an assessment recipe.
+underlying PR links for every frozen aggregate input. The published verify v2 prompt
+and `altiscope.whole_result_assessment` schema are the executable whole-result
+assessment contract; the retired claim-level verify v1 contract is ineligible.
 
 ## Run a comparison
 
@@ -122,3 +123,34 @@ tokens separately. Cache rates are optional registry data because availability a
 price vary by model and provider. If a call reports cache usage without the matching
 frozen cache rate, its cost and the containing comparison total are unavailable; the
 system never substitutes the ordinary input rate.
+
+## Run an independent whole-result assessment
+
+Save an explicit `verify` recipe using the published v2 assessment prompt, then target
+one exact successful comparison result:
+
+```bash
+altiscope recipes save independent-assessor --stage verify --model openrouter-openai
+altiscope comparisons assess RESULT_UUID --recipe VERIFY_RECIPE_UUID
+```
+
+Assessment execution never calls the production router and never substitutes another
+model. It compares the producer and assessor recipes' frozen canonical underlying-model
+identities, failing closed when either identity is unknown or both are equivalent (for
+example, direct Anthropic and an OpenRouter alias of the same Anthropic model). It sends
+the assessor the target's retained validated output plus the exact frozen preparation and
+prepared source text. It does not refresh GitHub, select newer reports, or trim evidence.
+An oversized or unavailable complete source creates a persisted zero-attempt failure.
+
+Every request creates a new immutable assessment record. Every actual initial or repair
+call is attached to that request and priced from the assessor recipe's frozen basis. The
+original generated result remains valid regardless of assessment outcome. Absence of a
+record means `not_run`; stored outcomes distinguish `succeeded`, `inconclusive`, and
+failure statuses. The command hides a completed verdict and rationale by default so a
+future human-review workflow can collect its initial judgment first. Use `--reveal` only
+after that judgment; hiding output cannot undo exposure that happened elsewhere.
+
+The Python API is `altiscope.assessment.run_assessment`. Consumers can load immutable
+history with `altiscope.store.comparisons.list_assessments` and render a specific record
+with `altiscope.assessment.render_assessment(assessment, reveal=False)`. Rendering `None`
+returns an empty string, preserving normal output when assessment has not run.

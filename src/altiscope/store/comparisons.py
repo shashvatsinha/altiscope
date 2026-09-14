@@ -39,6 +39,7 @@ _ERROR_CODES = {
     "refused",
     "independence_unknown",
     "same_underlying_model",
+    "source_unavailable",
     "internal_error",
 }
 
@@ -133,6 +134,27 @@ class TerminalAssessment:
     output: dict[str, object] | None = None
     verdict: Literal["agree", "disagree", "inconclusive"] | None = None
     rationale: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+@dataclass(frozen=True)
+class StoredAssessment:
+    id: UUID
+    request_identity: UUID
+    target_result_id: UUID
+    assessor_recipe_version_id: UUID
+    requesting_invocation_id: UUID | None
+    requesting_member_id: UUID | None
+    input_document: dict[str, object]
+    input_hash: str
+    independence_evidence: dict[str, object]
+    status: AssessmentStatus
+    verdict: Literal["agree", "disagree", "inconclusive"] | None
+    rationale: str | None
+    output: dict[str, object] | None
+    output_hash: str | None
+    call_ids: tuple[int, ...]
     error_code: str | None = None
     error_message: str | None = None
 
@@ -691,7 +713,7 @@ def save_assessment(
     retention: Literal["full", "hashes_only"],
     requesting_invocation_id: UUID | None = None,
     requesting_member_id: UUID | None = None,
-) -> UUID:
+) -> StoredAssessment:
     """Save an assessment separately from the generated result it evaluates."""
     if terminal.finished_at < terminal.started_at:
         raise ValueError("assessment finish time precedes start time")
@@ -705,14 +727,25 @@ def save_assessment(
             or terminal.error_code is not None
         ):
             raise ValueError("completed assessments require output, verdict, rationale, and schema")
+        if terminal.status == "inconclusive" and terminal.verdict != "inconclusive":
+            raise ValueError("inconclusive assessment status requires an inconclusive verdict")
+        if terminal.status == "succeeded" and terminal.verdict == "inconclusive":
+            raise ValueError("an inconclusive verdict requires inconclusive assessment status")
     elif terminal.output is not None or terminal.verdict is not None or not terminal.error_code:
         raise ValueError("failed assessments require an error code and no verdict/output")
     assessment_id = uuid4()
+    request_identity = uuid4()
     error_code, error_message = _sanitized_error(terminal.error_code, terminal.error_message)
     with conn.transaction():
         target = load_result(conn, target_result_id)
         if target.status != "succeeded":
             raise ValueError("assessments require a successful exact result")
+        validate_assessment_request_context(
+            conn,
+            target_result_id=target_result_id,
+            requesting_invocation_id=requesting_invocation_id,
+            requesting_member_id=requesting_member_id,
+        )
         recipe = load_recipe(conn, assessor_recipe_version_id)
         if recipe.stage != "verify":
             raise ValueError("assessor recipe must use the verify stage")
@@ -735,7 +768,7 @@ def save_assessment(
                 assessor_recipe_version_id,
                 requesting_invocation_id,
                 requesting_member_id,
-                uuid4(),
+                request_identity,
                 Jsonb(terminal.input_document),
                 _hash_json(terminal.input_document),
                 Jsonb(terminal.independence_evidence),
@@ -763,4 +796,78 @@ def save_assessment(
                 "VALUES(%s,'assessment',%s,%s)",
                 (call_id, assessment_id, ordinal),
             )
-    return assessment_id
+    return load_assessment(conn, assessment_id)
+
+
+def validate_assessment_request_context(
+    conn: psycopg.Connection,
+    *,
+    target_result_id: UUID,
+    requesting_invocation_id: UUID | None,
+    requesting_member_id: UUID | None,
+) -> None:
+    """Require any comparison attribution to contain the exact target result."""
+    if requesting_invocation_id is not None:
+        invocation_target = conn.execute(
+            "SELECT 1 FROM comparison_members WHERE invocation_id=%s AND result_id=%s",
+            (requesting_invocation_id, target_result_id),
+        ).fetchone()
+        if invocation_target is None:
+            raise ValueError("requesting assessment invocation does not contain the target result")
+    if requesting_member_id is not None:
+        member_target = conn.execute(
+            "SELECT 1 FROM comparison_members WHERE id=%s AND invocation_id=%s AND result_id=%s",
+            (requesting_member_id, requesting_invocation_id, target_result_id),
+        ).fetchone()
+        if member_target is None:
+            raise ValueError(
+                "requesting assessment member must belong to the supplied invocation "
+                "and target its exact result"
+            )
+
+
+def load_assessment(conn: psycopg.Connection, assessment_id: UUID | str) -> StoredAssessment:
+    """Load one exact assessment, including its retained verdict and ordered real calls."""
+    row = conn.execute(
+        "SELECT id,request_identity,target_result_id,assessor_recipe_version_id,"
+        "requesting_invocation_id,requesting_member_id,input_document,input_hash,"
+        "independence_evidence,status,verdict,rationale,output_document,output_hash,"
+        "error_code,error_message FROM comparison_assessments WHERE id=%s",
+        (UUID(str(assessment_id)),),
+    ).fetchone()
+    if row is None:
+        raise ValueError("assessment not found")
+    calls = conn.execute(
+        "SELECT call_id FROM comparison_assessment_calls WHERE assessment_id=%s ORDER BY ordinal",
+        (UUID(str(assessment_id)),),
+    ).fetchall()
+    return StoredAssessment(
+        id=UUID(str(row[0])),
+        request_identity=UUID(str(row[1])),
+        target_result_id=UUID(str(row[2])),
+        assessor_recipe_version_id=UUID(str(row[3])),
+        requesting_invocation_id=UUID(str(row[4])) if row[4] is not None else None,
+        requesting_member_id=UUID(str(row[5])) if row[5] is not None else None,
+        input_document=row[6],
+        input_hash=str(row[7]),
+        independence_evidence=row[8],
+        status=row[9],
+        verdict=row[10],
+        rationale=str(row[11]) if row[11] is not None else None,
+        output=row[12],
+        output_hash=str(row[13]) if row[13] is not None else None,
+        call_ids=tuple(int(call[0]) for call in calls),
+        error_code=str(row[14]) if row[14] is not None else None,
+        error_message=str(row[15]) if row[15] is not None else None,
+    )
+
+
+def list_assessments(
+    conn: psycopg.Connection, *, target_result_id: UUID
+) -> tuple[StoredAssessment, ...]:
+    """Return immutable assessment history; absence represents the not-run state."""
+    rows = conn.execute(
+        "SELECT id FROM comparison_assessments WHERE target_result_id=%s ORDER BY created_at,id",
+        (target_result_id,),
+    ).fetchall()
+    return tuple(load_assessment(conn, UUID(str(row[0]))) for row in rows)

@@ -119,7 +119,7 @@ def prompts_list() -> None:
 def recipes_save(  # noqa: PLR0917
     name: Annotated[str, typer.Argument(help="stable recipe name")],
     model: Annotated[str, typer.Option(help="model registry key")],
-    stage: Annotated[str, typer.Option(help="pr_summary or aggregate")],
+    stage: Annotated[str, typer.Option(help="pr_summary, aggregate, or verify")],
     prompt_version: Annotated[
         str | None, typer.Option(help="exact prompt version; default is current")
     ] = None,
@@ -133,8 +133,8 @@ def recipes_save(  # noqa: PLR0917
     from altiscope.store.db import connect
     from altiscope.store.recipes import RecipeOverrides, create_recipe
 
-    if stage not in ("pr_summary", "aggregate"):
-        raise typer.BadParameter("stage must be pr_summary or aggregate")
+    if stage not in ("pr_summary", "aggregate", "verify"):
+        raise typer.BadParameter("stage must be pr_summary, aggregate, or verify")
     if effort not in (None, "low", "medium", "high", "xhigh", "max"):
         raise typer.BadParameter("effort must be low, medium, high, xhigh, or max")
     typed_stage: Stage = stage  # type: ignore[assignment]
@@ -326,6 +326,48 @@ def comparisons_run(
         f"Current invocation: {run.new_call_count} model calls; cost {total_cost}; "
         f"elapsed {run.elapsed_ms} ms"
     )
+
+
+@comparisons_app.command("assess")
+def comparisons_assess(
+    result_id: Annotated[str, typer.Argument(help="exact successful comparison-result UUID")],
+    recipe: Annotated[str, typer.Option(help="exact independent verify recipe-version UUID")],
+    reveal: Annotated[
+        bool,
+        typer.Option(
+            help="show the verdict and rationale; default output is safe for pre-judgment use"
+        ),
+    ] = False,
+) -> None:
+    """Assess one exact result and its exact saved source without routing or refresh."""
+    from uuid import UUID
+
+    import psycopg
+
+    from altiscope.assessment import render_assessment, run_assessment
+    from altiscope.store.db import connect
+
+    settings = load_settings()
+    try:
+        parsed_result = UUID(result_id)
+        parsed_recipe = UUID(recipe)
+        with connect(settings.database_url) as conn:
+            run = run_assessment(
+                conn,
+                target_result_id=parsed_result,
+                assessor_recipe_version_id=parsed_recipe,
+                retention=settings.llm_payload_retention,
+            )
+    except (ValueError, OSError, psycopg.Error) as exc:
+        typer.echo(f"Could not run assessment: {exc}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(render_assessment(run.assessment, reveal=reveal), nl=False)
+    cost = (
+        f"configured-price estimate ${run.measurements.estimated_cost_usd:.8f}"
+        if run.measurements.cost_status == "complete"
+        else run.measurements.cost_status
+    )
+    typer.echo(f"Assessment calls: {run.measurements.call_count}; cost {cost}")
 
 
 @app.command()
