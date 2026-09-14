@@ -255,11 +255,13 @@ recipe does not erase successful siblings or prevent the remaining members runni
 
 Retain available usage, cache-token counts, latency, request IDs, returned model,
 actual mode and status for every call. Costs use the recipe's frozen pricing basis,
-not future registry prices. The existing writer uses ordinary input/output rates
-without special cache pricing; label that estimate and its limitations. Unavailable
-usage/prices are unknown, not proof of zero cost (existing adapters sometimes return
-zero token counts when metadata is missing; generalization must preserve that
-distinction). Store measurement availability and estimate completeness.
+not future registry prices. Price ordinary input, output, cache reads, and cache
+writes as separate categories. When a call reports cache usage and its frozen recipe
+lacks the corresponding cache rate, its cost is unavailable; never substitute the
+ordinary input rate. Unavailable usage/prices are unknown, not proof of zero cost
+(existing adapters sometimes return zero token counts when metadata is missing;
+generalization must preserve that distinction). Store measurement availability and
+estimate completeness.
 
 Invocation totals count only calls from members generated in that invocation, plus
 separately attributed assessment calls. Reused members have zero **new** generation

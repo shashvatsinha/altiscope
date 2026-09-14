@@ -319,6 +319,8 @@ def test_repair_budget_cost_estimates_and_missing_credentials(
         registry = fixture_registry()
         registry.models["fixture"].input_usd_per_mtok = 2
         registry.models["fixture"].output_usd_per_mtok = 4
+        registry.models["fixture"].cache_read_usd_per_mtok = 0.5
+        registry.models["fixture"].cache_write_usd_per_mtok = 2.5
         prompt = load_prompt(REPO_ROOT / "prompts/pr_summary/v3.md")
         required = structured_request_tokens(
             system=prompt.body,
@@ -351,7 +353,7 @@ def test_repair_budget_cost_estimates_and_missing_credentials(
         class MeasuredFixture(FixtureProvider):
             def generate_structured(self, **kwargs):  # type: ignore[no-untyped-def]
                 result = super().generate_structured(**kwargs)
-                return replace(result, usage=Usage(10, 5), latency_ms=7)
+                return replace(result, usage=Usage(10, 5, 3, 2), latency_ms=7)
 
         run = run_comparison(
             conn,
@@ -370,7 +372,17 @@ def test_repair_budget_cost_estimates_and_missing_credentials(
         assert [item.current.call_count for item in run.members] == [1, 1]
         assert run.new_call_count == 2
         assert run.new_cost_status == "complete"
-        assert run.new_estimated_cost_usd == Decimal("0.00008000")
+        assert run.new_estimated_cost_usd == Decimal("0.00009300")
+        call_rows = conn.execute(
+            "SELECT cost_usd,cost_status,pricing_basis FROM llm_calls WHERE id=ANY(%s) ORDER BY id",
+            ([call_id for item in run.members for call_id in item.result.call_ids],),
+        ).fetchall()
+        assert [row[:2] for row in call_rows] == [
+            (Decimal("0.00004650"), "complete"),
+            (Decimal("0.00004650"), "complete"),
+        ]
+        assert all(row[2]["cache_read_usd_per_mtok"] == 0.5 for row in call_rows)
+        assert all(row[2]["cache_write_usd_per_mtok"] == 2.5 for row in call_rows)
 
         missing_name = "ALTISCOPE_TEST_MISSING_" + uuid4().hex.upper()
         monkeypatch.delenv(missing_name, raising=False)
@@ -407,6 +419,60 @@ def test_repair_budget_cost_estimates_and_missing_credentials(
             "WHERE id=ANY(%s)",
             ([item.result.id for item in missing.members],),
         ).fetchone() == (["credentials", "credentials"],)
+
+
+def test_cache_usage_without_cache_rates_makes_cost_unavailable(
+    database: str, snapshot: PullRequestSnapshot
+):
+    with psycopg.connect(database) as conn:
+        source, _, _ = _freeze_pr(conn, snapshot)
+        registry = fixture_registry()
+        registry.models["fixture"].input_usd_per_mtok = 2
+        registry.models["fixture"].output_usd_per_mtok = 4
+        prompt = load_prompt(REPO_ROOT / "prompts/pr_summary/v3.md")
+        first = create_recipe(
+            conn,
+            name="unpriced-cache-a-" + uuid4().hex,
+            registry_key="fixture",
+            prompt=prompt,
+            registry=registry,
+        )
+        second = create_recipe(
+            conn,
+            name="unpriced-cache-b-" + uuid4().hex,
+            registry_key="fixture",
+            prompt=prompt,
+            registry=registry,
+        )
+
+        class CachedFixture(FixtureProvider):
+            def generate_structured(self, **kwargs):  # type: ignore[no-untyped-def]
+                result = super().generate_structured(**kwargs)
+                return replace(result, usage=Usage(10, 5, 3, 2))
+
+        run = run_comparison(
+            conn,
+            source_id=source.id,
+            recipe_version_ids=(first.id, second.id),
+            retention="full",
+            execution_build="unpriced-cache-test",
+            include_primary_baselines=False,
+            provider_factory=lambda recipe: CachedFixture(['{"review":"Measured."}']),
+        )
+
+        assert run.new_call_count == 2
+        assert run.new_cost_status == "unavailable"
+        assert run.new_estimated_cost_usd is None
+        call_rows = conn.execute(
+            "SELECT cost_usd,cost_status,pricing_basis FROM llm_calls WHERE id=ANY(%s) ORDER BY id",
+            ([call_id for item in run.members for call_id in item.result.call_ids],),
+        ).fetchall()
+        assert [row[:2] for row in call_rows] == [
+            (None, "unavailable"),
+            (None, "unavailable"),
+        ]
+        assert all(row[2]["cache_read_usd_per_mtok"] is None for row in call_rows)
+        assert all(row[2]["cache_write_usd_per_mtok"] is None for row in call_rows)
 
 
 def test_aggregate_members_receive_identical_frozen_input_and_model_changes_are_labeled(

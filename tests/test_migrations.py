@@ -63,6 +63,12 @@ def test_schema_applies_and_enforces_provenance_checks():
             cur.execute("SELECT count(*) FROM schema_migrations")
             row = cur.fetchone()
             assert row is not None and row[0] >= 1
+            cur.execute(
+                "SELECT numeric_precision,numeric_scale FROM information_schema.columns "
+                "WHERE table_schema=current_schema() AND table_name='llm_calls' "
+                "AND column_name='cost_usd'"
+            )
+            assert cur.fetchone() == (18, 8)
             # obsolete scaffold tables dropped
             cur.execute("SELECT to_regclass('public.pr_claims') IS NOT NULL")
             assert cur.fetchone() == (False,)

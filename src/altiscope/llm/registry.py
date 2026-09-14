@@ -55,6 +55,8 @@ class ModelSpec(BaseModel):
     max_output_tokens: int = Field(gt=0)
     input_usd_per_mtok: float = Field(default=0, ge=0)
     output_usd_per_mtok: float = Field(default=0, ge=0)
+    cache_read_usd_per_mtok: float | None = Field(default=None, ge=0)
+    cache_write_usd_per_mtok: float | None = Field(default=None, ge=0)
     capabilities: set[Capability] = Field(default_factory=set)
     underlying_model_id: str | None = Field(
         default=None,

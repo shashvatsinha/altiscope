@@ -132,10 +132,12 @@ class FrozenPricing(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     currency: Literal["USD"]
-    input_usd_per_mtok: float
-    output_usd_per_mtok: float
+    input_usd_per_mtok: float = Field(ge=0)
+    output_usd_per_mtok: float = Field(ge=0)
+    cache_read_usd_per_mtok: float | None = Field(default=None, ge=0)
+    cache_write_usd_per_mtok: float | None = Field(default=None, ge=0)
     units: Literal["per_million_tokens"]
-    cache_token_treatment: Literal["ordinary_input_rate"]
+    cache_token_treatment: Literal["separate_configured_rates", "ordinary_input_rate"]
     estimator_version: str
     status: Literal["configured_estimate", "unavailable"]
     provenance: Literal["model_registry"]
@@ -189,6 +191,8 @@ class FrozenExecutionConfig(BaseModel):
             max_output_tokens=self.model.max_output_tokens,
             input_usd_per_mtok=self.pricing.input_usd_per_mtok,
             output_usd_per_mtok=self.pricing.output_usd_per_mtok,
+            cache_read_usd_per_mtok=self.pricing.cache_read_usd_per_mtok,
+            cache_write_usd_per_mtok=self.pricing.cache_write_usd_per_mtok,
             capabilities=set(self.model.capabilities),
             underlying_model_id=self.model.underlying_model_id,
             underlying_model_evidence=self.model.underlying_model_evidence,
@@ -378,9 +382,11 @@ def _resolved_config(
             currency="USD",
             input_usd_per_mtok=model.input_usd_per_mtok,
             output_usd_per_mtok=model.output_usd_per_mtok,
+            cache_read_usd_per_mtok=model.cache_read_usd_per_mtok,
+            cache_write_usd_per_mtok=model.cache_write_usd_per_mtok,
             units="per_million_tokens",
-            cache_token_treatment="ordinary_input_rate",
-            estimator_version="configured-token-rates-v1",
+            cache_token_treatment="separate_configured_rates",
+            estimator_version="configured-token-rates-v2",
             status=pricing_status,
             provenance="model_registry",
         ),
@@ -571,9 +577,9 @@ def load_recipe(
     ).fetchone()
     if row is None:
         raise ValueError("recipe version not found")
-    config = FrozenExecutionConfig.model_validate(row[6])
-    if _hash_json(config.model_dump(mode="json")) != row[7]:
+    if _hash_json(row[6]) != row[7]:
         raise ValueError("stored recipe configuration hash mismatch")
+    config = FrozenExecutionConfig.model_validate(row[6])
     if hashlib.sha256(str(row[11]).encode()).hexdigest() != row[9]:
         raise ValueError("stored recipe prompt hash mismatch")
     if config.prompt_hash != row[9] or config.prompt_version != row[8]:

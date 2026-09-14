@@ -56,10 +56,17 @@ def models_list() -> None:
         typer.echo(f"  {prov.name:<12} {prov.kind:<18} {prov.base_url or '(sdk default)'}  {auth}")
     typer.echo("models:")
     for spec in registry.models.values():
+        cache_rates = (
+            f" cache=${spec.cache_read_usd_per_mtok}/${spec.cache_write_usd_per_mtok}"
+            if spec.cache_read_usd_per_mtok is not None
+            and spec.cache_write_usd_per_mtok is not None
+            else " cache=unconfigured"
+        )
         typer.echo(
             f"  {spec.id:<20} {spec.provider:<10} ctx={spec.context_window:>9,} "
             f"out={spec.max_output_tokens:>7,} "
-            f"${spec.input_usd_per_mtok}/${spec.output_usd_per_mtok} per MTok  "
+            f"input/output=${spec.input_usd_per_mtok}/${spec.output_usd_per_mtok}"
+            f"{cache_rates} per MTok  "
             f"[{spec.provider}] {sorted(spec.capabilities)}"
         )
     typer.echo("stages:")

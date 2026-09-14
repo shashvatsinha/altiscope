@@ -64,6 +64,9 @@ def test_recipe_versions_round_trip_frozen_configuration(database: str, tmp_path
         assert loaded.config.provider.transport_retry_limit == 0
         assert loaded.config.output_contract.version == 3
         assert loaded.config.model.underlying_model_id == "anthropic/claude-sonnet-5"
+        assert loaded.config.pricing.cache_read_usd_per_mtok == 0.2
+        assert loaded.config.pricing.cache_write_usd_per_mtok == 2.5
+        assert loaded.config.pricing.cache_token_treatment == "separate_configured_rates"
         assert latest.id == second.id
 
         executable = loaded.config.to_registry()
@@ -71,6 +74,8 @@ def test_recipe_versions_round_trip_frozen_configuration(database: str, tmp_path
         assert executable.provider_for("openrouter-anthropic").base_url == (
             "https://openrouter.ai/api/v1"
         )
+        assert executable.models["openrouter-anthropic"].cache_read_usd_per_mtok == 0.2
+        assert executable.models["openrouter-anthropic"].cache_write_usd_per_mtok == 2.5
 
 
 def test_recipe_creation_rejects_missing_and_mismatched_references(database: str):

@@ -54,7 +54,7 @@ assessment exposure events. A guided assessment reveal is rejected until the ini
 review revision is committed.
 
 Migrations `0007_comparison_persistence.sql` through
-`0010_comparison_execution_baselines.sql` are append-only. They preserve all M1/M2
+`0011_call_cost_precision.sql` are append-only. They preserve all M1/M2
 rows, add nullable call measurement metadata and isolated M3 tables, and retain
 underlying PR links for every frozen aggregate input. Whole-result assessment schema
 registration remains owned by #45; this work does not invent an assessment recipe.
@@ -116,3 +116,9 @@ prompt caused a difference in a stochastic sample. M3 intentionally has no numer
 confidence fields. Confidence reporting would require a separately specified sampling
 and evaluation method; the M3 protocol instead reports case-level counts, medians,
 ranges, missingness, and limitations.
+
+Configured-price estimates rate ordinary input, output, cache-read, and cache-write
+tokens separately. Cache rates are optional registry data because availability and
+price vary by model and provider. If a call reports cache usage without the matching
+frozen cache rate, its cost and the containing comparison total are unavailable; the
+system never substitutes the ordinary input rate.
