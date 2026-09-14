@@ -14,6 +14,8 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 ArtifactKind = Literal["protocol", "dataset", "record_contract"]
+UsefulnessStatus = Literal["measured", "unavailable", "not_applicable"]
+EffortComponent = Literal["preparation", "reading", "checking", "correction", "assessment_related"]
 
 
 def _hash_json(value: object) -> str:
@@ -24,7 +26,7 @@ def _hash_json(value: object) -> str:
 class EffortMeasure(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    component: Literal["preparation", "reading", "checking", "correction", "assessment_related"]
+    component: EffortComponent
     unit: Literal["milliseconds"] = "milliseconds"
     status: Literal["measured", "not_applicable", "unavailable"]
     value: int | None = Field(default=None, ge=0)
@@ -53,7 +55,7 @@ class ReviewRevisionInput(BaseModel):
     correctness_label: Literal["correct", "incorrect", "unclear"] | None = None
     correctness_rationale: str | None = None
     correction: str | None = None
-    usefulness_status: Literal["measured", "unavailable", "not_applicable"]
+    usefulness_status: UsefulnessStatus
     usefulness_score: int | None = Field(default=None, ge=1, le=5)
     usefulness_rationale: str | None = None
     effort: tuple[EffortMeasure, ...]
@@ -61,8 +63,6 @@ class ReviewRevisionInput(BaseModel):
 
     @model_validator(mode="after")
     def _validate_revision(self) -> ReviewRevisionInput:
-        if self.correctness_label is not None and not self.correctness_rationale:
-            raise ValueError("a correctness label requires rationale")
         if self.usefulness_status == "measured":
             if self.usefulness_score is None or not self.usefulness_rationale:
                 raise ValueError("measured usefulness requires a score and rationale")
@@ -222,6 +222,20 @@ def save_preparation(
     return preparation_id
 
 
+def get_preparation(
+    conn: psycopg.Connection, *, source_id: UUID, reviewer_id: str, case_id: str
+) -> tuple[UUID, EffortMeasure] | None:
+    """Load the one shareable preparation measurement for a reviewer and case."""
+    row = conn.execute(
+        "SELECT id,effort FROM review_preparations "
+        "WHERE source_id=%s AND reviewer_id=%s AND case_id=%s",
+        (source_id, reviewer_id, case_id),
+    ).fetchone()
+    if row is None:
+        return None
+    return UUID(str(row[0])), EffortMeasure.model_validate(row[1])
+
+
 def record_exposure(
     conn: psycopg.Connection,
     *,
@@ -359,7 +373,7 @@ def complete_review_session(
             raise ValueError("review session not found or already completed")
 
 
-def record_post_assessment_observation(
+def record_post_assessment_observation(  # noqa: PLR0912
     conn: psycopg.Connection,
     *,
     review_session_id: UUID,
@@ -369,6 +383,9 @@ def record_post_assessment_observation(
     assessment_verdict: Literal["agree", "disagree", "inconclusive"] | None = None,
     rationale: str,
     assessment_related_effort: EffortMeasure,
+    post_usefulness_status: UsefulnessStatus,
+    post_usefulness_score: int | None = None,
+    post_usefulness_rationale: str | None = None,
     true_problem_detection: bool | None = None,
     false_alarm: bool | None = None,
     missed_problem: bool | None = None,
@@ -387,6 +404,13 @@ def record_post_assessment_observation(
         raise ValueError("successful assessment observations require all four boolean outcomes")
     if assessment_status == "succeeded" and assessment_verdict is None:
         raise ValueError("successful assessment observations require a verdict")
+    if post_usefulness_status == "measured":
+        if post_usefulness_score is None or not (1 <= post_usefulness_score <= 5):
+            raise ValueError("measured post-assessment usefulness requires a score from 1 to 5")
+        if not post_usefulness_rationale or not post_usefulness_rationale.strip():
+            raise ValueError("measured post-assessment usefulness requires rationale")
+    elif post_usefulness_score is not None:
+        raise ValueError("unmeasured post-assessment usefulness must not have a score")
     observation_id = uuid4()
     with conn.transaction():
         exposure = conn.execute(
@@ -396,6 +420,16 @@ def record_post_assessment_observation(
         ).fetchone()
         if exposure is None or exposure[2] != review_session_id or exposure[1] != assessment_id:
             raise ValueError("observation must reference the session's exact exposure")
+        assessment = conn.execute(
+            "SELECT status,verdict FROM comparison_assessments WHERE id=%s", (assessment_id,)
+        ).fetchone()
+        if assessment is None:
+            raise ValueError("assessment not found")
+        stored_status = (
+            assessment[0] if assessment[0] in ("succeeded", "inconclusive") else "failed"
+        )
+        if assessment_status != stored_status or assessment_verdict != assessment[1]:
+            raise ValueError("observation status and verdict must match the exact assessment")
         if resulting_revision_id is not None:
             revision = conn.execute(
                 "SELECT review_session_id FROM review_revisions WHERE id=%s",
@@ -408,7 +442,9 @@ def record_post_assessment_observation(
             "(id,review_session_id,exposure_id,assessment_id,resulting_revision_id,"
             "assessment_status,assessment_verdict,true_problem_detection,false_alarm,"
             "missed_problem,inconclusive,"
-            "rationale,assessment_related_effort) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            "rationale,assessment_related_effort,post_usefulness_status,"
+            "post_usefulness_score,post_usefulness_rationale) "
+            "VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (
                 observation_id,
                 review_session_id,
@@ -423,6 +459,253 @@ def record_post_assessment_observation(
                 inconclusive,
                 rationale,
                 Jsonb(assessment_related_effort.model_dump(mode="json")),
+                post_usefulness_status,
+                post_usefulness_score,
+                post_usefulness_rationale,
             ),
         )
     return observation_id
+
+
+def list_review_sessions(
+    conn: psycopg.Connection, *, result_id: UUID | None = None
+) -> tuple[ReviewSession, ...]:
+    """List review identities without collapsing multiple reviews of one result."""
+    query = "SELECT id,result_id,source_id,reviewer_id FROM review_sessions"
+    params: tuple[UUID, ...] = ()
+    if result_id is not None:
+        query += " WHERE result_id=%s"
+        params = (result_id,)
+    query += " ORDER BY started_at,id"
+    return tuple(
+        ReviewSession(UUID(str(row[0])), UUID(str(row[1])), UUID(str(row[2])), str(row[3]))
+        for row in conn.execute(query, params).fetchall()
+    )
+
+
+def _iso(value: datetime | None) -> str | None:
+    return value.isoformat().replace("+00:00", "Z") if value is not None else None
+
+
+def _artifact_export(
+    conn: psycopg.Connection, artifact_id: UUID | None
+) -> dict[str, object] | None:
+    if artifact_id is None:
+        return None
+    row = conn.execute(
+        "SELECT id,kind,external_id,version,content,content_hash "
+        "FROM evaluation_artifacts WHERE id=%s",
+        (artifact_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError("evaluation artifact not found")
+    return {
+        "artifact_id": str(row[0]),
+        "kind": str(row[1]),
+        "id": str(row[2]),
+        "version": str(row[3]),
+        "sha256": str(row[5]),
+        "content_retained": True,
+        "content": row[4],
+    }
+
+
+def _historical_repository_locator(current: str, preparation_document: dict[str, object]) -> str:
+    snapshot = preparation_document.get("snapshot")
+    if isinstance(snapshot, dict):
+        locator = snapshot.get("repository")
+        if isinstance(locator, str) and locator.strip():
+            return locator
+    inputs = preparation_document.get("inputs")
+    if isinstance(inputs, list):
+        for item in inputs:
+            if not isinstance(item, dict):
+                continue
+            urls = item.get("pr_urls")
+            if not isinstance(urls, list):
+                continue
+            for url in urls:
+                if isinstance(url, str) and url.startswith("https://github.com/"):
+                    parts = url.removeprefix("https://github.com/").split("/")
+                    if len(parts) >= 2:
+                        return "/".join(parts[:2])
+    return current
+
+
+def load_review_record(
+    conn: psycopg.Connection, review_session_id: UUID | str
+) -> dict[str, object]:
+    """Reload one complete, versioned review payload for inspection or export."""
+    session_id = UUID(str(review_session_id))
+    row = conn.execute(
+        "SELECT s.id,s.result_id,s.source_id,s.invocation_id,s.reviewer_id,"
+        "s.protocol_artifact_id,s.dataset_artifact_id,s.record_contract_artifact_id,"
+        "s.case_id,s.case_kind,s.case_group,s.reader_role,s.familiarity_level,"
+        "s.familiarity_basis,s.declared_prior_exposure,s.result_presentation_ordinal,"
+        "s.started_at,s.completed_at,r.github_id,r.owner,r.name,p.number,c.preparation_document "
+        "FROM review_sessions s JOIN comparison_sources c ON c.id=s.source_id "
+        "JOIN repositories r ON r.id=c.repository_id "
+        "LEFT JOIN pull_requests p ON p.id=c.pull_request_id WHERE s.id=%s",
+        (session_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError("review session not found")
+    protocol = _artifact_export(conn, UUID(str(row[5])))
+    dataset = _artifact_export(conn, UUID(str(row[6]))) if row[6] is not None else None
+    contract = _artifact_export(conn, UUID(str(row[7])))
+    assert protocol is not None and contract is not None
+    current_locator = f"{row[19]}/{row[20]}"
+    historical_locator = _historical_repository_locator(current_locator, row[22])
+    preparation_row = conn.execute(
+        "SELECT id,effort FROM review_preparations "
+        "WHERE source_id=%s AND reviewer_id=%s AND case_id=%s",
+        (row[2], row[4], row[8]),
+    ).fetchone()
+    preparation: dict[str, object] | None = None
+    if preparation_row is not None:
+        preparation = {
+            "preparation_record_id": str(preparation_row[0]),
+            "frozen_source_id": str(row[2]),
+            "effort": preparation_row[1],
+        }
+    exposure_rows = conn.execute(
+        "SELECT id,ordinal,assessment_id,kind,presentation_ordinal,occurred_at "
+        "FROM assessment_exposures WHERE review_session_id=%s ORDER BY ordinal",
+        (session_id,),
+    ).fetchall()
+    exposures = [
+        {
+            "exposure_id": str(item[0]),
+            "ordinal": int(item[1]),
+            "assessment_id": str(item[2]),
+            "kind": str(item[3]),
+            "presentation_ordinal": int(item[4]),
+            "occurred_at": _iso(item[5]),
+        }
+        for item in exposure_rows
+    ]
+    revision_rows = conn.execute(
+        "SELECT id,ordinal,previous_revision_id,kind,blind_status,correctness_label,"
+        "correctness_rationale,correction,usefulness_status,usefulness_score,"
+        "usefulness_rationale,effort,created_at FROM review_revisions "
+        "WHERE review_session_id=%s ORDER BY ordinal",
+        (session_id,),
+    ).fetchall()
+    revisions: list[dict[str, object]] = []
+    for item in revision_rows:
+        seen = conn.execute(
+            "SELECT exposure_id FROM review_revision_exposures "
+            "WHERE revision_id=%s ORDER BY ordinal",
+            (item[0],),
+        ).fetchall()
+        effort = {measure["component"]: measure for measure in item[11]}
+        revisions.append(
+            {
+                "revision_id": str(item[0]),
+                "ordinal": int(item[1]),
+                "previous_revision_id": str(item[2]) if item[2] is not None else None,
+                "kind": str(item[3]),
+                "blind_status": str(item[4]),
+                "exposure_ids_seen": [str(value[0]) for value in seen],
+                "correctness": {
+                    "label": item[5],
+                    "rationale": item[6],
+                    "correction": item[7],
+                },
+                "usefulness": {
+                    "status": str(item[8]),
+                    "score": int(item[9]) if item[9] is not None else None,
+                    "rationale": item[10],
+                },
+                "effort": effort,
+                "created_at": _iso(item[12]),
+            }
+        )
+    observation_rows = conn.execute(
+        "SELECT id,exposure_id,assessment_id,assessment_status,assessment_verdict,"
+        "true_problem_detection,false_alarm,missed_problem,inconclusive,rationale,"
+        "assessment_related_effort,resulting_revision_id,post_usefulness_status,"
+        "post_usefulness_score,post_usefulness_rationale "
+        "FROM post_assessment_observations WHERE review_session_id=%s ORDER BY created_at,id",
+        (session_id,),
+    ).fetchall()
+    observations = [
+        {
+            "observation_id": str(item[0]),
+            "exposure_id": str(item[1]),
+            "assessment_id": str(item[2]),
+            "assessment_status": str(item[3]),
+            "assessment_verdict": item[4],
+            "true_problem_detection": item[5],
+            "false_alarm": item[6],
+            "missed_problem": item[7],
+            "inconclusive": item[8],
+            "rationale": str(item[9]),
+            "assessment_related_effort": item[10],
+            "post_usefulness": {
+                "status": str(item[12]),
+                "score": int(item[13]) if item[13] is not None else None,
+                "rationale": item[14],
+            },
+            "resulting_revision_id": str(item[11]) if item[11] is not None else None,
+        }
+        for item in observation_rows
+    ]
+    exposed_assessment_ids = {str(item["assessment_id"]) for item in exposures}
+    assessment_rows = conn.execute(
+        "SELECT id,assessor_recipe_version_id,status,verdict,rationale,error_code "
+        "FROM comparison_assessments WHERE target_result_id=%s ORDER BY created_at,id",
+        (row[1],),
+    ).fetchall()
+    assessment_history = [
+        {
+            "assessment_id": str(item[0]),
+            "assessor_recipe_version_id": str(item[1]),
+            "status": str(item[2]),
+            "exposed": str(item[0]) in exposed_assessment_ids,
+            "verdict": item[3] if str(item[0]) in exposed_assessment_ids else None,
+            "rationale": item[4] if str(item[0]) in exposed_assessment_ids else None,
+            "error_code": item[5],
+        }
+        for item in assessment_rows
+    ]
+    return {
+        "contract_version": str(contract["id"]),
+        "evaluation_id": str(session_id),
+        "review_session_id": str(session_id),
+        "result_id": str(row[1]),
+        "comparison_source_id": str(row[2]),
+        "invocation_id": str(row[3]) if row[3] is not None else None,
+        "reviewer_id": str(row[4]),
+        "protocol": protocol,
+        "dataset": dataset,
+        "record_contract": contract,
+        "case": {
+            "id": str(row[8]),
+            "kind": str(row[9]),
+            "group": str(row[10]),
+            "repository_id": int(row[18]),
+            "repository_locator_at_selection": historical_locator,
+            "pull_request_number": int(row[21]) if row[21] is not None else None,
+            "comparison_source_id": str(row[2]),
+        },
+        "reader_role": str(row[11]),
+        "familiarity": {"level": str(row[12]), "basis": str(row[13])},
+        "declared_prior_assessment_exposure": str(row[14]),
+        "result_presentation_ordinal": int(row[15]),
+        "preparation": preparation,
+        "exposures": exposures,
+        "revisions": revisions,
+        "post_assessment_observations": observations,
+        "assessment_availability": "not_run" if not assessment_rows else "recorded",
+        "assessment_history": assessment_history,
+        "started_at": _iso(row[16]),
+        "completed_at": _iso(row[17]),
+    }
+
+
+def export_review_record(
+    conn: psycopg.Connection, review_session_id: UUID | str
+) -> dict[str, object]:
+    """Return the reloadable JSON document used by the next evaluation session."""
+    return load_review_record(conn, review_session_id)

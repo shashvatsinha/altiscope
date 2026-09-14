@@ -67,4 +67,6 @@ provider/model settings, source inputs, result attempts, and review records with
 changing production report history. Prompt-only primary baselines are included by
 default and are labeled separately from model-changing comparisons. The M3 branch can
 also run an optional whole-result assessment with a distinct pinned underlying model;
-its output is stored separately and hidden by default for pre-judgment workflows.
+its output is stored separately and hidden by default for pre-judgment workflows. A
+guided exact-result review records correctness, usefulness, human effort, corrections,
+and actual assessment exposure without changing generated outputs.

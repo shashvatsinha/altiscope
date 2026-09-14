@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Annotated, Literal, cast
+from uuid import UUID
 
 import typer
 
@@ -11,6 +15,10 @@ from altiscope.llm.registry import Registry
 from altiscope.llm.router import RoutingError, route
 from altiscope.llm.types import STAGES, Stage
 from altiscope.prompts import list_prompts
+from altiscope.store.evaluation import EffortComponent, EffortMeasure
+
+if TYPE_CHECKING:
+    import psycopg
 
 app = typer.Typer(
     help="Altitude-appropriate visibility into engineering work.",
@@ -22,11 +30,146 @@ models_app = typer.Typer(help="Model registry and routing.", no_args_is_help=Tru
 prompts_app = typer.Typer(help="Versioned prompts.", no_args_is_help=True)
 recipes_app = typer.Typer(help="Immutable generation recipes.", no_args_is_help=True)
 comparisons_app = typer.Typer(help="Reproducible frozen-source comparisons.", no_args_is_help=True)
+reviews_app = typer.Typer(help="Guided exact-result human reviews.", no_args_is_help=True)
 app.add_typer(db_app, name="db")
 app.add_typer(models_app, name="models")
 app.add_typer(prompts_app, name="prompts")
 app.add_typer(recipes_app, name="recipes")
 app.add_typer(comparisons_app, name="comparisons")
+app.add_typer(reviews_app, name="reviews")
+
+
+def _prompt_choice(prompt: str, choices: tuple[str, ...], *, default: str) -> str:
+    value = typer.prompt(prompt, default=default).strip()
+    if value not in choices:
+        raise typer.BadParameter(f"{prompt} must be one of {', '.join(choices)}")
+    return value
+
+
+def _prompt_effort(component: EffortComponent) -> EffortMeasure:
+    status = _prompt_choice(
+        f"{component} effort status",
+        ("measured", "not_applicable", "unavailable"),
+        default="measured",
+    )
+    if status == "measured":
+        value = typer.prompt(f"{component} active milliseconds (zero is retained)", type=int)
+        method = _prompt_choice(
+            f"{component} measurement method", ("timer", "estimated"), default="timer"
+        )
+        return EffortMeasure(
+            component=component,
+            status="measured",
+            value=value,
+            method=cast(Literal["timer", "estimated"], method),
+        )
+    if status == "unavailable":
+        reason = typer.prompt(f"Why {component} effort is unavailable")
+        return EffortMeasure(component=component, status="unavailable", unavailable_reason=reason)
+    return EffortMeasure(component=component, status="not_applicable")
+
+
+def _prompt_usefulness(prefix: str) -> tuple[str, int | None, str | None]:
+    status = _prompt_choice(
+        f"{prefix} usefulness status",
+        ("measured", "unavailable", "not_applicable"),
+        default="measured",
+    )
+    if status != "measured":
+        return status, None, None
+    score = typer.prompt(f"{prefix} usefulness score (1-5)", type=int)
+    if not 1 <= score <= 5:
+        raise typer.BadParameter("usefulness score must be from 1 to 5")
+    rationale = typer.prompt(f"{prefix} usefulness rationale")
+    return status, score, rationale
+
+
+def _capture_initial_revision(conn: psycopg.Connection, session_id: UUID) -> UUID:
+    """Reload a durable session and commit its one immutable initial revision."""
+    from altiscope.review import render_frozen_source, render_review_result
+    from altiscope.store.comparisons import load_result, load_source
+    from altiscope.store.evaluation import (
+        ReviewRevisionInput,
+        append_review_revision,
+        get_preparation,
+        load_review_record,
+        save_preparation,
+    )
+
+    record = load_review_record(conn, session_id)
+    revisions = cast(list[dict[str, object]], record["revisions"])
+    if revisions:
+        raise ValueError("review session already has an initial revision")
+    result = load_result(conn, UUID(str(record["result_id"])))
+    source = load_source(conn, result.source_id)
+    reviewer = str(record["reviewer_id"])
+    case = cast(dict[str, object], record["case"])
+    case_id = str(case["id"])
+    typer.echo(render_frozen_source(source), nl=False)
+    preparation = get_preparation(conn, source_id=source.id, reviewer_id=reviewer, case_id=case_id)
+    if preparation is None:
+        preparation_effort = _prompt_effort("preparation")
+        save_preparation(
+            conn,
+            source_id=source.id,
+            reviewer_id=reviewer,
+            case_id=case_id,
+            effort=preparation_effort,
+        )
+    else:
+        typer.echo(f"Reusing preparation {preparation[0]}: {preparation[1].model_dump_json()}")
+
+    typer.echo(render_review_result(result), nl=False)
+    reading_effort = _prompt_effort("reading")
+    typer.echo("Check the complete result against the frozen source shown above.")
+    checking_effort = _prompt_effort("checking")
+    correctness = _prompt_choice(
+        "Whole-result correctness", ("correct", "incorrect", "unclear"), default="correct"
+    )
+    correctness_rationale = typer.prompt(
+        "Correctness rationale (optional)", default="", show_default=False
+    ).strip()
+    correction = typer.prompt(
+        "Corrected account text (leave blank when no correction is performed)",
+        default="",
+        show_default=False,
+    ).strip()
+    correction_effort = (
+        _prompt_effort("correction")
+        if correction
+        else EffortMeasure(component="correction", status="not_applicable")
+    )
+    usefulness_status, usefulness_score, usefulness_rationale = _prompt_usefulness("Pre-assessment")
+    prior_exposure = str(record["declared_prior_assessment_exposure"])
+    exposures = cast(list[dict[str, object]], record["exposures"])
+    blind_status = (
+        "confirmed_unexposed"
+        if prior_exposure == "none_declared" and not exposures
+        else "unknown"
+        if prior_exposure == "unknown"
+        else "known_exposed"
+    )
+    revision_id = append_review_revision(
+        conn,
+        review_session_id=session_id,
+        revision=ReviewRevisionInput(
+            kind="initial_blind",
+            blind_status=blind_status,
+            correctness_label=cast(Literal["correct", "incorrect", "unclear"], correctness),
+            correctness_rationale=correctness_rationale or None,
+            correction=correction or None,
+            usefulness_status=cast(
+                Literal["measured", "unavailable", "not_applicable"], usefulness_status
+            ),
+            usefulness_score=usefulness_score,
+            usefulness_rationale=usefulness_rationale,
+            effort=(reading_effort, checking_effort, correction_effort),
+            created_at=datetime.now(UTC),
+        ),
+        exposure_ids_seen=tuple(UUID(str(item["exposure_id"])) for item in exposures),
+    )
+    typer.echo("Initial judgment committed; it will not be overwritten.")
+    return revision_id
 
 
 @db_app.command("migrate")
@@ -368,6 +511,438 @@ def comparisons_assess(
         else run.measurements.cost_status
     )
     typer.echo(f"Assessment calls: {run.measurements.call_count}; cost {cost}")
+
+
+@comparisons_app.command("review")
+def comparisons_review(  # noqa: PLR0917
+    result_id: Annotated[str, typer.Argument(help="exact successful comparison-result UUID")],
+    reviewer: Annotated[str, typer.Option(prompt=True, help="study reviewer identifier")],
+    case_id: Annotated[str, typer.Option(prompt=True, help="protocol case identifier")],
+    case_group: Annotated[
+        str, typer.Option(help="development or held_out; development is for workflow tuning")
+    ] = "development",
+    reader_role: Annotated[str | None, typer.Option(help="ic, manager, or exec")] = None,
+    familiarity: Annotated[
+        str, typer.Option(help="direct, repository, domain, prepared, or none")
+    ] = "domain",
+    familiarity_basis: Annotated[
+        str, typer.Option(prompt=True, help="short qualification basis")
+    ] = "",
+    prior_exposure: Annotated[
+        str, typer.Option(help="none_declared, known, or unknown")
+    ] = "none_declared",
+    prior_assessment: Annotated[
+        str | None, typer.Option(help="exact already-seen assessment UUID, when known")
+    ] = None,
+    invocation_id: Annotated[
+        str | None, typer.Option(help="invocation that presented this exact result")
+    ] = None,
+    result_presentation_ordinal: Annotated[
+        int, typer.Option(help="actual result presentation position")
+    ] = 1,
+    evaluation_dir: Annotated[
+        Path, typer.Option(help="directory containing the versioned M3 evaluation documents")
+    ] = Path("docs/evaluation"),
+) -> None:
+    """Inspect frozen evidence, then commit an initial judgment before any guided reveal."""
+    from datetime import UTC, datetime
+    from uuid import UUID
+
+    import psycopg
+
+    from altiscope.assessment import render_assessment
+    from altiscope.review.workflow import retain_protocol_artifacts
+    from altiscope.store.comparisons import list_assessments, load_result, load_source
+    from altiscope.store.db import connect
+    from altiscope.store.evaluation import (
+        create_review_session,
+        record_exposure,
+    )
+
+    if case_group not in ("development", "held_out"):
+        raise typer.BadParameter("case-group must be development or held_out")
+    if familiarity not in ("direct", "repository", "domain", "prepared", "none"):
+        raise typer.BadParameter(
+            "familiarity must be direct, repository, domain, prepared, or none"
+        )
+    if prior_exposure not in ("none_declared", "known", "unknown"):
+        raise typer.BadParameter("prior-exposure must be none_declared, known, or unknown")
+    if prior_assessment is not None and prior_exposure != "known":
+        raise typer.BadParameter("prior-assessment requires --prior-exposure known")
+    try:
+        parsed_result = UUID(result_id)
+        parsed_invocation = UUID(invocation_id) if invocation_id else None
+        with connect(load_settings().database_url) as conn:
+            result = load_result(conn, parsed_result)
+            source = load_source(conn, result.source_id)
+            role = reader_role or ("ic" if source.kind == "pr" else "manager")
+            if role not in ("ic", "manager", "exec"):
+                raise ValueError("reader role must be ic, manager, or exec")
+            artifacts = retain_protocol_artifacts(conn, evaluation_dir=evaluation_dir)
+            session = create_review_session(
+                conn,
+                result_id=parsed_result,
+                reviewer_id=reviewer,
+                protocol_artifact_id=artifacts.protocol_id,
+                dataset_artifact_id=artifacts.dataset_id,
+                record_contract_artifact_id=artifacts.record_contract_id,
+                case_id=case_id,
+                case_kind=source.kind,
+                case_group=case_group,
+                reader_role=role,
+                familiarity_level=familiarity,
+                familiarity_basis=familiarity_basis,
+                declared_prior_exposure=prior_exposure,
+                result_presentation_ordinal=result_presentation_ordinal,
+                started_at=datetime.now(UTC),
+                invocation_id=parsed_invocation,
+            )
+            if prior_assessment is not None:
+                record_exposure(
+                    conn,
+                    review_session_id=session.id,
+                    assessment_id=UUID(prior_assessment),
+                    kind="declared_prior_external",
+                    presentation_ordinal=1,
+                    occurred_at=datetime.now(UTC),
+                )
+
+            typer.echo(f"Review session {session.id}; assessment output remains hidden.")
+            _capture_initial_revision(conn, session.id)
+            assessments = list_assessments(conn, target_result_id=parsed_result)
+            if assessments:
+                typer.echo("Available assessment records (content concealed):")
+                for assessment in assessments:
+                    typer.echo(render_assessment(assessment, reveal=False), nl=False)
+                typer.echo(
+                    f"Reveal explicitly: altiscope reviews reveal {session.id} ASSESSMENT_UUID"
+                )
+            else:
+                typer.echo("Assessment status: not_run")
+            typer.echo(f"Resume: altiscope reviews show {session.id}")
+    except (ValueError, OSError, psycopg.Error) as exc:
+        typer.echo(f"Could not record review: {exc}", err=True)
+        raise typer.Exit(1) from None
+
+
+@reviews_app.command("resume")
+def reviews_resume(review_session_id: str) -> None:
+    """Resume an interrupted session that has not committed its initial judgment."""
+    import psycopg
+
+    from altiscope.assessment import render_assessment
+    from altiscope.store.comparisons import list_assessments
+    from altiscope.store.db import connect
+    from altiscope.store.evaluation import load_review_record
+
+    try:
+        session_id = UUID(review_session_id)
+        with connect(load_settings().database_url) as conn:
+            record = load_review_record(conn, session_id)
+            _capture_initial_revision(conn, session_id)
+            result_id = UUID(str(record["result_id"]))
+            assessments = list_assessments(conn, target_result_id=result_id)
+            if assessments:
+                typer.echo("Available assessment records (content concealed):")
+                for assessment in assessments:
+                    typer.echo(render_assessment(assessment, reveal=False), nl=False)
+                typer.echo(
+                    f"Reveal explicitly: altiscope reviews reveal {session_id} ASSESSMENT_UUID"
+                )
+            else:
+                typer.echo("Assessment status: not_run")
+    except (ValueError, psycopg.Error) as exc:
+        typer.echo(f"Could not resume review: {exc}", err=True)
+        raise typer.Exit(1) from None
+
+
+@reviews_app.command("show")
+def reviews_show(
+    review_session_id: str,
+    json_output: Annotated[bool, typer.Option("--json", help="emit the reloadable record")] = False,
+) -> None:
+    """Reload a review; reveal only assessments already recorded as exposed."""
+    from uuid import UUID
+
+    import psycopg
+
+    from altiscope.assessment import render_assessment
+    from altiscope.review import render_frozen_source, render_review_result
+    from altiscope.store.comparisons import list_assessments, load_result, load_source
+    from altiscope.store.db import connect
+    from altiscope.store.evaluation import load_review_record
+
+    try:
+        with connect(load_settings().database_url) as conn:
+            record = load_review_record(conn, UUID(review_session_id))
+            if json_output:
+                typer.echo(json.dumps(record, indent=2, sort_keys=True))
+                return
+            result = load_result(conn, UUID(str(record["result_id"])))
+            source = load_source(conn, result.source_id)
+            typer.echo(
+                f"Review session {review_session_id}; result {result.id}; reviewer "
+                f"{record['reviewer_id']}"
+            )
+            typer.echo(render_frozen_source(source), nl=False)
+            typer.echo(render_review_result(result), nl=False)
+            exposed = {
+                str(item["assessment_id"])
+                for item in cast(list[dict[str, object]], record["exposures"])
+            }
+            assessments = list_assessments(conn, target_result_id=result.id)
+            if not assessments:
+                typer.echo("Assessment status: not_run")
+            for assessment in assessments:
+                typer.echo(
+                    render_assessment(assessment, reveal=str(assessment.id) in exposed), nl=False
+                )
+            typer.echo(
+                f"Revisions: {len(cast(list[object], record['revisions']))}; "
+                f"exposures: {len(exposed)}; completed: {record['completed_at'] or 'no'}"
+            )
+    except (ValueError, psycopg.Error) as exc:
+        typer.echo(f"Could not load review: {exc}", err=True)
+        raise typer.Exit(1) from None
+
+
+@reviews_app.command("reveal")
+def reviews_reveal(
+    review_session_id: str,
+    assessment_id: str,
+    presentation_ordinal: Annotated[int, typer.Option(help="actual assessment position")] = 1,
+    kind: Annotated[
+        str, typer.Option(help="guided_reveal, accidental, or general_inspection")
+    ] = "guided_reveal",
+) -> None:
+    """Persist exposure first, then display the exact assessment verdict and rationale."""
+    from datetime import UTC, datetime
+    from uuid import UUID
+
+    import psycopg
+
+    from altiscope.assessment import render_assessment
+    from altiscope.store.comparisons import load_assessment
+    from altiscope.store.db import connect
+    from altiscope.store.evaluation import record_exposure
+
+    if kind not in ("guided_reveal", "accidental", "general_inspection"):
+        raise typer.BadParameter("kind must be guided_reveal, accidental, or general_inspection")
+    try:
+        with connect(load_settings().database_url) as conn:
+            exposure_id = record_exposure(
+                conn,
+                review_session_id=UUID(review_session_id),
+                assessment_id=UUID(assessment_id),
+                kind=cast(
+                    Literal[
+                        "guided_reveal",
+                        "declared_prior_external",
+                        "accidental",
+                        "general_inspection",
+                    ],
+                    kind,
+                ),
+                presentation_ordinal=presentation_ordinal,
+                occurred_at=datetime.now(UTC),
+            )
+            assessment = load_assessment(conn, UUID(assessment_id))
+        typer.echo(f"Exposure {exposure_id} committed before display.")
+        typer.echo(render_assessment(assessment, reveal=True), nl=False)
+        typer.echo(
+            f"Record its effect: altiscope reviews observe {review_session_id} {exposure_id}"
+        )
+    except (ValueError, psycopg.Error) as exc:
+        typer.echo(f"Could not reveal assessment: {exc}", err=True)
+        raise typer.Exit(1) from None
+
+
+@reviews_app.command("observe")
+def reviews_observe(
+    review_session_id: str,
+    exposure_id: str,
+    revise_judgment: Annotated[
+        bool, typer.Option(help="append a post-assessment judgment revision")
+    ] = False,
+    complete: Annotated[bool, typer.Option(help="mark the review session complete")] = False,
+) -> None:
+    """Record assessment effects, extra effort, usefulness, and an optional revision."""
+    from datetime import UTC, datetime
+    from uuid import UUID
+
+    import psycopg
+
+    from altiscope.review.workflow import assessment_observation_state
+    from altiscope.store.comparisons import load_assessment
+    from altiscope.store.db import connect
+    from altiscope.store.evaluation import (
+        ReviewRevisionInput,
+        append_review_revision,
+        complete_review_session,
+        record_post_assessment_observation,
+    )
+
+    try:
+        session_uuid = UUID(review_session_id)
+        exposure_uuid = UUID(exposure_id)
+        with connect(load_settings().database_url) as conn:
+            exposure = conn.execute(
+                "SELECT assessment_id FROM assessment_exposures "
+                "WHERE id=%s AND review_session_id=%s",
+                (exposure_uuid, session_uuid),
+            ).fetchone()
+            if exposure is None:
+                raise ValueError("exposure does not belong to the review session")
+            assessment = load_assessment(conn, UUID(str(exposure[0])))
+            observation_status = assessment_observation_state(assessment.status)
+            rationale = typer.prompt("Assessment observation rationale")
+            assessment_effort = _prompt_effort("assessment_related")
+            post_status, post_score, post_rationale = _prompt_usefulness("Post-assessment")
+            true_detection: bool | None = None
+            false_alarm: bool | None = None
+            missed_problem: bool | None = None
+            inconclusive: bool | None = None
+            if observation_status == "succeeded":
+                true_detection = typer.confirm("Accepted true problem detection?", default=False)
+                false_alarm = typer.confirm("Rejected false alarm?", default=False)
+                missed_problem = typer.confirm(
+                    "Material problem missed by assessment?", default=False
+                )
+                inconclusive = typer.confirm("Observation remains inconclusive?", default=False)
+            elif observation_status == "inconclusive":
+                true_detection = False
+                false_alarm = False
+                missed_problem = False
+                inconclusive = True
+
+            resulting_revision_id = None
+            if revise_judgment:
+                correctness = _prompt_choice(
+                    "Revised whole-result correctness",
+                    ("correct", "incorrect", "unclear"),
+                    default="correct",
+                )
+                correctness_rationale = typer.prompt(
+                    "Revised correctness rationale (optional)", default="", show_default=False
+                ).strip()
+                correction = typer.prompt(
+                    "Revised corrected account text (blank for none)",
+                    default="",
+                    show_default=False,
+                ).strip()
+                correction_effort = (
+                    _prompt_effort("correction")
+                    if correction
+                    else EffortMeasure(component="correction", status="not_applicable")
+                )
+                exposure_rows = conn.execute(
+                    "SELECT id FROM assessment_exposures WHERE review_session_id=%s "
+                    "ORDER BY ordinal",
+                    (session_uuid,),
+                ).fetchall()
+                resulting_revision_id = append_review_revision(
+                    conn,
+                    review_session_id=session_uuid,
+                    revision=ReviewRevisionInput(
+                        kind="post_assessment",
+                        blind_status="known_exposed",
+                        correctness_label=cast(
+                            Literal["correct", "incorrect", "unclear"], correctness
+                        ),
+                        correctness_rationale=correctness_rationale or None,
+                        correction=correction or None,
+                        usefulness_status=cast(
+                            Literal["measured", "unavailable", "not_applicable"], post_status
+                        ),
+                        usefulness_score=post_score,
+                        usefulness_rationale=post_rationale,
+                        effort=(correction_effort,),
+                        created_at=datetime.now(UTC),
+                    ),
+                    exposure_ids_seen=tuple(UUID(str(item[0])) for item in exposure_rows),
+                )
+            record_post_assessment_observation(
+                conn,
+                review_session_id=session_uuid,
+                exposure_id=exposure_uuid,
+                assessment_id=assessment.id,
+                assessment_status=cast(
+                    Literal["not_run", "failed", "inconclusive", "succeeded"],
+                    observation_status,
+                ),
+                assessment_verdict=assessment.verdict,
+                rationale=rationale,
+                assessment_related_effort=assessment_effort,
+                post_usefulness_status=cast(
+                    Literal["measured", "unavailable", "not_applicable"], post_status
+                ),
+                post_usefulness_score=post_score,
+                post_usefulness_rationale=post_rationale,
+                true_problem_detection=true_detection,
+                false_alarm=false_alarm,
+                missed_problem=missed_problem,
+                inconclusive=inconclusive,
+                resulting_revision_id=resulting_revision_id,
+            )
+            if complete:
+                complete_review_session(conn, session_uuid, datetime.now(UTC))
+        typer.echo(
+            "Assessment observation committed"
+            + (f" with revision {resulting_revision_id}" if resulting_revision_id else "")
+            + "."
+        )
+    except (ValueError, psycopg.Error) as exc:
+        typer.echo(f"Could not record observation: {exc}", err=True)
+        raise typer.Exit(1) from None
+
+
+@reviews_app.command("complete")
+def reviews_complete(review_session_id: str) -> None:
+    """Mark a durable review session complete without changing any revision."""
+    from datetime import UTC, datetime
+    from uuid import UUID
+
+    import psycopg
+
+    from altiscope.store.db import connect
+    from altiscope.store.evaluation import complete_review_session
+
+    try:
+        with connect(load_settings().database_url) as conn:
+            complete_review_session(conn, UUID(review_session_id), datetime.now(UTC))
+        typer.echo(f"Review session {review_session_id} completed.")
+    except (ValueError, psycopg.Error) as exc:
+        typer.echo(f"Could not complete review: {exc}", err=True)
+        raise typer.Exit(1) from None
+
+
+@reviews_app.command("export")
+def reviews_export(
+    review_session_id: str,
+    output: Annotated[
+        Path | None, typer.Option(help="write JSON to this path; default is standard output")
+    ] = None,
+) -> None:
+    """Export the complete reloadable m3-review-record-v1 document."""
+    from uuid import UUID
+
+    import psycopg
+
+    from altiscope.store.db import connect
+    from altiscope.store.evaluation import export_review_record
+
+    try:
+        with connect(load_settings().database_url) as conn:
+            record = export_review_record(conn, UUID(review_session_id))
+        rendered = json.dumps(record, indent=2, sort_keys=True) + "\n"
+        if output is None:
+            typer.echo(rendered, nl=False)
+        else:
+            output.write_text(rendered)
+            typer.echo(f"Exported review session {review_session_id} to {output}")
+    except (ValueError, OSError, psycopg.Error) as exc:
+        typer.echo(f"Could not export review: {exc}", err=True)
+        raise typer.Exit(1) from None
 
 
 @app.command()

@@ -54,7 +54,7 @@ assessment exposure events. A guided assessment reveal is rejected until the ini
 review revision is committed.
 
 Migrations `0007_comparison_persistence.sql` through
-`0011_call_cost_precision.sql` are append-only. They preserve all M1/M2
+`0013_optional_review_rationale.sql` are append-only. They preserve all M1/M2
 rows, add nullable call measurement metadata and isolated M3 tables, and retain
 underlying PR links for every frozen aggregate input. The published verify v2 prompt
 and `altiscope.whole_result_assessment` schema are the executable whole-result
@@ -154,3 +154,51 @@ The Python API is `altiscope.assessment.run_assessment`. Consumers can load immu
 history with `altiscope.store.comparisons.list_assessments` and render a specific record
 with `altiscope.assessment.render_assessment(assessment, reveal=False)`. Rendering `None`
 returns an empty string, preserving normal output when assessment has not run.
+
+## Record a human review
+
+Start the guided workflow with one exact successful result ID. It retains the checked-in
+protocol, dataset, and record-contract content, records reviewer role and familiarity,
+shows the frozen source before the result, reuses preparation once per reviewer/case/source,
+and collects correctness, usefulness, and millisecond effort with explicit measured,
+not-applicable, or unavailable states.
+
+```bash
+altiscope comparisons review RESULT_UUID \
+  --reviewer reviewer-t1 \
+  --case-id m3-dev-pr-001 \
+  --case-group development \
+  --familiarity domain \
+  --familiarity-basis "Python document-conversion review experience"
+```
+
+The command commits the immutable initial revision and stops with assessment output hidden.
+If an assessment exists, reveal it through the review session. The exposure event is saved
+before the verdict or rationale is printed; a guided reveal without an initial revision is
+rejected by storage.
+
+```bash
+altiscope reviews reveal REVIEW_SESSION_UUID ASSESSMENT_UUID
+altiscope reviews observe REVIEW_SESSION_UUID EXPOSURE_UUID --revise-judgment --complete
+```
+
+`reviews observe` records result-level detections, false alarms, misses or inconclusive
+outcomes, assessment-related effort, post-assessment usefulness, and an optional append-only
+judgment/correction revision. It does not edit the generated result or regenerate production
+output. Failed and inconclusive assessments remain distinct; no assessment record is
+reported as `not_run`.
+
+Resume or hand off a session without conversation history:
+
+```bash
+altiscope reviews resume REVIEW_SESSION_UUID  # if initial capture was interrupted
+altiscope reviews show REVIEW_SESSION_UUID
+altiscope reviews export REVIEW_SESSION_UUID --output review.json
+```
+
+The normal view reveals only assessment records whose exposure is already persisted for
+that session. `--json` and `export` produce the complete `m3-review-record-v1` document,
+including retained artifact content, exact result/source IDs, historical PR navigation,
+zero-versus-missing effort, presentation order, revisions, exposures, and observations.
+These local commands do not add authentication or access control; concealment supports the
+evaluation sequence and cannot undo exposure through another path.

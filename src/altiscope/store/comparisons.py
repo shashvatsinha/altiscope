@@ -7,7 +7,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID, uuid4
 
 import psycopg
@@ -192,6 +192,11 @@ def freeze_pr_source(
         }
         content_hash = _hash_json(frozen)
         text_hash = _hash_text(prepared_text)
+        stored_preparation_document = {
+            **preparation_document,
+            "snapshot": row[1],
+            "snapshot_source_hash": str(row[2]),
+        }
         conn.execute(
             "INSERT INTO comparison_sources"
             "(id,kind,stage,repository_id,pull_request_id,source_format_version,"
@@ -204,7 +209,7 @@ def freeze_pr_source(
                 snapshot_id,
                 source_format_version,
                 Jsonb(preparation_contract),
-                Jsonb(preparation_document),
+                Jsonb(stored_preparation_document),
                 prepared_text,
                 content_hash,
                 text_hash,
@@ -216,7 +221,7 @@ def freeze_pr_source(
         "pr_summary",
         int(row[0]),
         snapshot_id,
-        preparation_document,
+        stored_preparation_document,
         prepared_text,
         content_hash,
         text_hash,
@@ -383,13 +388,24 @@ def load_source(conn: psycopg.Connection, source_id: UUID | str) -> ComparisonSo
         )
         for item in input_rows
     )
+    preparation_document = cast(dict[str, object], row[5])
+    if row[1] == "pr" and "snapshot" not in preparation_document:
+        snapshot_row = conn.execute(
+            "SELECT normalized_snapshot,source_hash FROM pull_requests WHERE id=%s", (row[4],)
+        ).fetchone()
+        if snapshot_row is not None:
+            preparation_document = {
+                **preparation_document,
+                "snapshot": snapshot_row[0],
+                "snapshot_source_hash": str(snapshot_row[1]),
+            }
     return ComparisonSource(
         UUID(str(row[0])),
         row[1],
         row[2],
         int(row[3]),
         int(row[4]) if row[4] is not None else None,
-        row[5],
+        preparation_document,
         str(row[6]),
         str(row[7]),
         str(row[8]),
