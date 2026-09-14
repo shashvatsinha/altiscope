@@ -68,19 +68,29 @@ class OpenAICompatibleProvider:
         spec: ProviderSpec,
         client: openai.OpenAI | None = None,
         http_client: httpx.Client | None = None,
+        transport_retry_limit: int | None = None,
     ) -> None:
         self.name = spec.name
         if client is not None:
             self._client = client
             return
         api_key = resolve_api_key(spec.api_key_env)
-        self._client = openai.OpenAI(
-            # Local servers need no key but the SDK insists on a string.
-            api_key=api_key or "not-needed",
-            base_url=spec.base_url,
-            timeout=spec.timeout_seconds,
-            http_client=http_client,
-        )
+        # Local servers need no key but the SDK insists on a string.
+        if transport_retry_limit is None:
+            self._client = openai.OpenAI(
+                api_key=api_key or "not-needed",
+                base_url=spec.base_url,
+                timeout=spec.timeout_seconds,
+                http_client=http_client,
+            )
+        else:
+            self._client = openai.OpenAI(
+                api_key=api_key or "not-needed",
+                base_url=spec.base_url,
+                timeout=spec.timeout_seconds,
+                http_client=http_client,
+                max_retries=transport_retry_limit,
+            )
 
     def generate_structured(
         self,

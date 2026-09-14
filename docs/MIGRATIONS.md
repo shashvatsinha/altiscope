@@ -49,3 +49,6 @@ call rows remain valid and retain their original values. Migration `0008_compari
 tightens nullable hash/error checks and adds the exact result/source review foreign key.
 Migration `0009_comparison_source_pr_links` retains the deterministic underlying PR URL
 array for each frozen comparison input and backfills it from saved report lineage.
+Migration `0010_comparison_execution_baselines` records immutable minimal-prompt baseline
+recipes, exact candidate-to-baseline assignments, and invocation-member labels/targets
+for later comparison inspection. It does not alter production report caches or history.

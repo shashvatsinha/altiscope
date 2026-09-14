@@ -12,6 +12,7 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel
 
 from altiscope.aggregate.generate import AggregateAttempt
+from altiscope.llm.execution import StructuredAttempt
 from altiscope.llm.registry import Registry
 from altiscope.llm.router import RoutingDecision
 from altiscope.llm.tokens import estimate_tokens
@@ -124,7 +125,7 @@ def save_calls(
 def save_recipe_calls(
     conn: psycopg.Connection,
     *,
-    attempts: tuple[Attempt, ...] | tuple[AggregateAttempt, ...],
+    attempts: tuple[Attempt, ...] | tuple[AggregateAttempt, ...] | tuple[StructuredAttempt, ...],
     recipe: RecipeVersion,
     retention: str,
     snapshot_id: int | None = None,
@@ -167,7 +168,12 @@ def save_recipe_calls(
         cost = None
         if cost_status == "complete":
             cost = (
-                result.usage.input_tokens * config.pricing.input_usd_per_mtok
+                (
+                    result.usage.input_tokens
+                    + result.usage.cache_read_tokens
+                    + result.usage.cache_write_tokens
+                )
+                * config.pricing.input_usd_per_mtok
                 + result.usage.output_tokens * config.pricing.output_usd_per_mtok
             ) / 1_000_000
         call_id = insert(

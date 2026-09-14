@@ -468,16 +468,28 @@ def create_recipe(
         schema=schema,
         overrides=overrides or RecipeOverrides(),
     )
+    return _insert_recipe(conn, name=clean_name, prompt=prompt, schema=schema, config=config)
+
+
+def _insert_recipe(
+    conn: psycopg.Connection,
+    *,
+    name: str,
+    prompt: Prompt,
+    schema: SchemaRegistration,
+    config: FrozenExecutionConfig,
+) -> RecipeVersion:
+    """Insert one already-resolved immutable recipe configuration."""
     configuration = config.model_dump(mode="json")
     digest = _hash_json(configuration)
     recipe_id = uuid4()
     with conn.transaction():
-        conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (clean_name,))
+        conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (name,))
         prompt_id = _save_prompt(conn, prompt)
         schema_id = _save_schema(conn, schema)
         row = conn.execute(
             "SELECT COALESCE(max(version),0)+1 FROM recipe_versions WHERE name=%s",
-            (clean_name,),
+            (name,),
         ).fetchone()
         assert row is not None
         version = int(row[0])
@@ -488,7 +500,7 @@ def create_recipe(
             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (
                 recipe_id,
-                clean_name,
+                name,
                 version,
                 prompt.stage,
                 prompt_id,
@@ -500,7 +512,7 @@ def create_recipe(
         )
     return RecipeVersion(
         recipe_id,
-        clean_name,
+        name,
         version,
         prompt.stage,
         prompt_id,
@@ -510,6 +522,37 @@ def create_recipe(
         prompt,
         schema.output_type,
     )
+
+
+def create_recipe_variant(
+    conn: psycopg.Connection,
+    *,
+    name: str,
+    base: RecipeVersion,
+    prompt: Prompt,
+) -> RecipeVersion:
+    """Create a prompt-only variant while preserving every other frozen setting."""
+    clean_name = name.strip()
+    if not clean_name:
+        raise ValueError("recipe name must not be blank")
+    if not prompt.body.strip() or not prompt.source_text.strip():
+        raise ValueError("recipe prompt content must not be blank")
+    if prompt.stage != base.stage:
+        raise ValueError("recipe variant prompt must match the base recipe stage")
+    schema = registered_schema(prompt.stage, prompt.schema_version)
+    if (
+        schema.contract_id != base.config.output_contract.contract_id
+        or schema.version != base.config.output_contract.version
+    ):
+        raise ValueError("recipe variant must preserve the base output contract")
+    config = base.config.model_copy(
+        update={
+            "prompt_hash": prompt.content_hash,
+            "prompt_version": prompt.version,
+            "prompt_source_path": str(prompt.path),
+        }
+    )
+    return _insert_recipe(conn, name=clean_name, prompt=prompt, schema=schema, config=config)
 
 
 def load_recipe(
@@ -533,8 +576,12 @@ def load_recipe(
         raise ValueError("stored recipe configuration hash mismatch")
     if hashlib.sha256(str(row[11]).encode()).hexdigest() != row[9]:
         raise ValueError("stored recipe prompt hash mismatch")
+    if config.prompt_hash != row[9] or config.prompt_version != row[8]:
+        raise ValueError("stored recipe prompt identity differs from its frozen configuration")
     if _hash_json(row[16]) != row[14]:
         raise ValueError("stored output schema hash mismatch")
+    if config.output_contract.schema_hash != row[14]:
+        raise ValueError("stored recipe schema differs from its frozen configuration")
     stage: Stage = row[3]
     schema = registered_schema(stage, int(row[13]))
     if require_executable:

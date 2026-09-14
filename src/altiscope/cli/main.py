@@ -21,10 +21,12 @@ db_app = typer.Typer(help="Database migrations.", no_args_is_help=True)
 models_app = typer.Typer(help="Model registry and routing.", no_args_is_help=True)
 prompts_app = typer.Typer(help="Versioned prompts.", no_args_is_help=True)
 recipes_app = typer.Typer(help="Immutable generation recipes.", no_args_is_help=True)
+comparisons_app = typer.Typer(help="Reproducible frozen-source comparisons.", no_args_is_help=True)
 app.add_typer(db_app, name="db")
 app.add_typer(models_app, name="models")
 app.add_typer(prompts_app, name="prompts")
 app.add_typer(recipes_app, name="recipes")
+app.add_typer(comparisons_app, name="comparisons")
 
 
 @db_app.command("migrate")
@@ -192,6 +194,131 @@ def recipes_show(
     typer.echo(json.dumps(recipe.config.model_dump(mode="json"), indent=2, sort_keys=True))
     typer.echo("Retained prompt source:")
     typer.echo(recipe.prompt.source_text, nl=False)
+
+
+@recipes_app.command("baseline")
+def recipes_baseline(
+    recipe_id: Annotated[str, typer.Argument(help="exact candidate recipe-version UUID")],
+    rationale: Annotated[
+        str | None, typer.Option(help="why this prompt is the primary baseline")
+    ] = None,
+) -> None:
+    """Assign the shipped minimal prompt as an exact recipe's primary baseline."""
+    from uuid import UUID
+
+    import psycopg
+
+    from altiscope.prompts import load_prompt
+    from altiscope.store.baselines import DEFAULT_BASELINE_RATIONALE, register_primary_baseline
+    from altiscope.store.db import connect
+    from altiscope.store.recipes import load_recipe
+
+    settings = load_settings()
+    try:
+        parsed_id = UUID(recipe_id)
+        with connect(settings.database_url) as conn:
+            candidate = load_recipe(conn, parsed_id)
+            prompt = load_prompt(settings.prompts_dir / "baseline" / f"{candidate.stage}-v1.md")
+            baseline = register_primary_baseline(
+                conn,
+                recipe_version_id=parsed_id,
+                prompt=prompt,
+                rationale=rationale or DEFAULT_BASELINE_RATIONALE,
+            )
+    except (ValueError, OSError, psycopg.Error) as exc:
+        typer.echo(f"Could not register baseline: {exc}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(
+        f"Primary baseline {baseline.recipe.name} v{baseline.recipe.version} "
+        f"({baseline.recipe.id}) for {recipe_id}; prompt {baseline.recipe.prompt.version}"
+    )
+
+
+@comparisons_app.command("run")
+def comparisons_run(
+    source_id: Annotated[str, typer.Argument(help="exact frozen comparison-source UUID")],
+    recipes: Annotated[
+        list[str], typer.Option("--recipe", help="exact recipe-version UUID; repeat at least twice")
+    ],
+    regenerate: Annotated[
+        bool, typer.Option(help="bypass successful comparison results and preserve a new result")
+    ] = False,
+    baselines: Annotated[
+        bool,
+        typer.Option(
+            "--baselines/--no-baselines",
+            help="expand assigned prompt-only primary baselines before freezing the invocation",
+        ),
+    ] = True,
+) -> None:
+    """Run exact recipe versions on one already-frozen source."""
+    from uuid import UUID
+
+    import psycopg
+
+    from altiscope import __version__
+    from altiscope.comparison.service import run_comparison
+    from altiscope.store.db import connect
+
+    settings = load_settings()
+    try:
+        parsed_source = UUID(source_id)
+        parsed_recipes = tuple(UUID(value) for value in recipes)
+        with connect(settings.database_url) as conn:
+            run = run_comparison(
+                conn,
+                source_id=parsed_source,
+                recipe_version_ids=parsed_recipes,
+                retention=settings.llm_payload_retention,
+                execution_build=__version__,
+                regenerate=regenerate,
+                include_primary_baselines=baselines,
+            )
+    except (ValueError, OSError, psycopg.Error) as exc:
+        typer.echo(f"Could not run comparison: {exc}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"Comparison invocation {run.invocation.id}")
+    for member in run.members:
+        current_cost = (
+            f"configured-price estimate ${member.current.estimated_cost_usd:.8f}"
+            if member.current.cost_status == "complete"
+            else member.current.cost_status
+        )
+        line = (
+            f"  {member.condition_label}: {member.recipe.name} v{member.recipe.version}; "
+            f"{member.disposition} result {member.result.id} ({member.result.status}); "
+            f"new calls {member.current.call_count}, current cost {current_cost}"
+        )
+        if member.result.error_code is not None:
+            line += f"; error {member.result.error_code}"
+            if member.result.error_message is not None:
+                line += f": {member.result.error_message}"
+        if member.disposition == "reused":
+            origin_cost = (
+                f"configured-price estimate ${member.origin.estimated_cost_usd:.8f}"
+                if member.origin.cost_status == "complete"
+                else member.origin.cost_status
+            )
+            line += (
+                f"; origin calls {member.origin.call_count}, origin cost {origin_cost}, "
+                f"origin model latency {member.origin.model_latency_ms} ms, "
+                f"origin retention {member.result.origin_retention}"
+            )
+            if (
+                run.invocation.retention == "full"
+                and member.result.origin_retention == "hashes_only"
+            ):
+                line += "; use --regenerate to retain new raw payloads"
+        typer.echo(line)
+    total_cost = (
+        f"configured-price estimate ${run.new_estimated_cost_usd:.8f}"
+        if run.new_cost_status == "complete"
+        else run.new_cost_status
+    )
+    typer.echo(
+        f"Current invocation: {run.new_call_count} model calls; cost {total_cost}; "
+        f"elapsed {run.elapsed_ms} ms"
+    )
 
 
 @app.command()

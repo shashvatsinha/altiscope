@@ -61,7 +61,8 @@ interface come later.
 
 Open source under [Apache 2.0](LICENSE).
 
-M3's immutable recipe and comparison persistence commands are documented in
+M3's immutable recipe and reproducible comparison commands are documented in
 [`docs/M3-RECIPES.md`](docs/M3-RECIPES.md). They retain frozen prompts, schemas,
 provider/model settings, source inputs, result attempts, and review records without
-changing production report history.
+changing production report history. Prompt-only primary baselines are included by
+default and are labeled separately from model-changing comparisons.
