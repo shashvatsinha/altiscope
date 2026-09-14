@@ -18,9 +18,9 @@ inclusion on 2026-09-10. See the [M2 walkthrough](M2-WALKTHROUGH.md) and
 [release evidence](releases/m2.md).
 
 The M3 integration branch also has immutable recipes, frozen comparison sources,
-reproducible comparison execution, and prompt-only primary baselines. M3 is not a
-released milestone: assessment, human review UI, rich inspection, the final study,
-and release evidence remain open.
+reproducible comparison execution, prompt-only primary baselines, and optional
+independent whole-result assessment. M3 is not a released milestone: the human review
+UI, rich inspection, final study, and release evidence remain open.
 
 | Workflow | Available now |
 |---|---|
@@ -30,10 +30,12 @@ and release evidence remain open.
 | Inspection | CLI drill-down through exact input versions to PR reports and GitHub links |
 | History | Shared prompt/model-call records, with new versions created on request |
 | Experimental comparisons | Run exact recipe versions on one frozen PR or aggregate source, with isolated cache/history and default prompt-only baselines |
+| Independent assessment | Assess one exact successful comparison result against its exact saved source with a distinct frozen underlying model |
 | Demonstration | Credential-free engineer, manager, executive, and multi-level examples |
 
 The [M1 walkthrough](M1-WALKTHROUGH.md) covers individual PR commands. The
-[roadmap](ROADMAP.md) covers later work, including assessment and a web interface.
+[M3 recipe guide](M3-RECIPES.md) covers comparisons and assessment. The
+[roadmap](ROADMAP.md) covers later work, including a web interface.
 
 ## 2. From source to report
 
@@ -108,9 +110,10 @@ including under `hashes_only` retention. Repair requests still pass the complete
 request budget check before being sent.
 
 These checks do not establish accuracy. Readers can inspect the underlying material,
-and the CLI currently labels interpretation as unverified. Prompts ask the model to
-describe work without judging people. Optional independent review and evaluation
-remain later work.
+and production reports remain labeled as unverified. Prompts ask the model to describe
+work without judging people. On the M3 integration branch, an optional independently
+pinned model can assess a whole comparison result against the same exact saved material;
+that agreement or disagreement is evidence for human review, not factual certainty.
 
 ## 5. Answering a reader's question
 
@@ -198,8 +201,8 @@ remote completeness or freshness. GitHub does not provide a simultaneous read of
 entire repository, so edits during collection remain an operational limitation.
 
 Later work includes rich comparison inspection, manual production input-version
-selection, optional model assessment, feedback, private access, operational retention
-settings, and the web interface. The current decisions do not settle those product details.
+selection, feedback, private access, operational retention settings, and the web
+interface. The current decisions do not settle those product details.
 
 ## 11. M2 execution and storage
 

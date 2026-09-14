@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -29,6 +30,30 @@ class StructuredExecution:
     output: BaseModel | None
     attempts: tuple[StructuredAttempt, ...]
     errors: tuple[str, ...]
+
+
+StructuredFailureStatus = Literal["preflight_failed", "invalid_output", "refused", "failed"]
+
+
+def classify_structured_failure(
+    execution: StructuredExecution,
+) -> tuple[StructuredFailureStatus, str, str]:
+    """Map a bounded structured request to a stable persisted failure."""
+    detail = execution.errors[0] if execution.errors else "generation failed"
+    if detail.startswith("oversized_input"):
+        if execution.attempts:
+            return "invalid_output", "budget_exceeded", detail
+        return "preflight_failed", "oversized_input", detail
+    stop = execution.attempts[-1].result.stop_reason if execution.attempts else "unknown"
+    if stop == "refusal":
+        return "refused", "refused", "provider refused the request"
+    if stop == "max_tokens":
+        return "failed", "truncation", "provider stopped at the output-token limit"
+    if stop == "transport_error":
+        return "failed", "transport", "provider transport failed"
+    if stop in ("end_turn", "invalid_output"):
+        return "invalid_output", "invalid_output", detail
+    return "failed", "internal_error", "provider returned an unsupported terminal status"
 
 
 def request_tokens(

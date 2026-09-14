@@ -29,6 +29,7 @@ from altiscope.llm.types import Effort, Stage
 from altiscope.prompts import Prompt
 from altiscope.schemas.aggregate import AGGREGATE_SCHEMA_VERSION, AggregateOutput
 from altiscope.schemas.pr_summary import PR_SUMMARY_SCHEMA_VERSION, PrReviewOutput
+from altiscope.schemas.verify import ASSESSMENT_SCHEMA_VERSION, AssessmentOutput
 
 CONFIGURATION_FORMAT_VERSION = 1
 IDENTITY_POLICY_VERSION = "underlying-model-v1"
@@ -244,6 +245,12 @@ _SCHEMAS: dict[tuple[Stage, int], SchemaRegistration] = {
     ),
     ("aggregate", AGGREGATE_SCHEMA_VERSION): SchemaRegistration(
         "aggregate", "altiscope.aggregate", AGGREGATE_SCHEMA_VERSION, AggregateOutput
+    ),
+    ("verify", ASSESSMENT_SCHEMA_VERSION): SchemaRegistration(
+        "verify",
+        "altiscope.whole_result_assessment",
+        ASSESSMENT_SCHEMA_VERSION,
+        AssessmentOutput,
     ),
 }
 
