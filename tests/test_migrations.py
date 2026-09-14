@@ -256,12 +256,12 @@ def test_fresh_schema_and_upgrade_preserve_m1_review(
             assert conn.execute("SELECT to_regclass('pr_claims')").fetchone() == (None,)
             if stored is not None and before is not None:
                 for table, rows in before.items():
-                    assert (
-                        conn.execute(
-                            sql.SQL("SELECT * FROM {} ORDER BY id").format(sql.Identifier(table))
-                        ).fetchall()
-                        == rows
-                    )
+                    after = conn.execute(
+                        sql.SQL("SELECT * FROM {} ORDER BY id").format(sql.Identifier(table))
+                    ).fetchall()
+                    # Append-only migrations may add nullable provenance columns; all
+                    # pre-existing values and row identities must remain unchanged.
+                    assert [row[: len(rows[0])] for row in after] == rows
                 ctx = prepare(snapshot)
                 publication = load_account(conn, stored.id, ctx)
                 assert publication.output and publication.output.review == "Added a lock."

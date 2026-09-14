@@ -20,9 +20,11 @@ app = typer.Typer(
 db_app = typer.Typer(help="Database migrations.", no_args_is_help=True)
 models_app = typer.Typer(help="Model registry and routing.", no_args_is_help=True)
 prompts_app = typer.Typer(help="Versioned prompts.", no_args_is_help=True)
+recipes_app = typer.Typer(help="Immutable generation recipes.", no_args_is_help=True)
 app.add_typer(db_app, name="db")
 app.add_typer(models_app, name="models")
 app.add_typer(prompts_app, name="prompts")
+app.add_typer(recipes_app, name="recipes")
 
 
 @db_app.command("migrate")
@@ -102,6 +104,94 @@ def prompts_list() -> None:
             f"{p.stage:<12} {p.version:<4} schema={p.schema_version} "
             f"{p.content_hash[:16]}  {p.path}"
         )
+
+
+@recipes_app.command("save")
+def recipes_save(  # noqa: PLR0917
+    name: Annotated[str, typer.Argument(help="stable recipe name")],
+    model: Annotated[str, typer.Option(help="model registry key")],
+    stage: Annotated[str, typer.Option(help="pr_summary or aggregate")],
+    prompt_version: Annotated[
+        str | None, typer.Option(help="exact prompt version; default is current")
+    ] = None,
+    effort: Annotated[str | None, typer.Option(help="low, medium, high, xhigh, or max")] = None,
+    reserved_output_tokens: Annotated[
+        int | None, typer.Option(help="override reserved output tokens")
+    ] = None,
+) -> None:
+    """Resolve the registry and prompt into a new immutable recipe version."""
+    from altiscope.llm.types import Effort
+    from altiscope.store.db import connect
+    from altiscope.store.recipes import RecipeOverrides, create_recipe
+
+    if stage not in ("pr_summary", "aggregate"):
+        raise typer.BadParameter("stage must be pr_summary or aggregate")
+    if effort not in (None, "low", "medium", "high", "xhigh", "max"):
+        raise typer.BadParameter("effort must be low, medium, high, xhigh, or max")
+    typed_stage: Stage = stage  # type: ignore[assignment]
+    typed_effort: Effort | None = effort  # type: ignore[assignment]
+    settings = load_settings()
+    prompts = [p for p in list_prompts(settings.prompts_dir) if p.stage == typed_stage]
+    if prompt_version is not None:
+        prompts = [p for p in prompts if p.version == prompt_version]
+    if not prompts:
+        raise typer.BadParameter("matching prompt version not found")
+    prompt = max(prompts, key=lambda item: int(item.version.lstrip("v")))
+    try:
+        with connect(settings.database_url) as conn:
+            recipe = create_recipe(
+                conn,
+                name=name,
+                registry_key=model,
+                prompt=prompt,
+                registry=Registry.load(settings.models_config),
+                overrides=RecipeOverrides(
+                    effort=typed_effort, reserved_output_tokens=reserved_output_tokens
+                ),
+            )
+    except (ValueError, OSError) as exc:
+        typer.echo(f"Could not save recipe: {exc}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(
+        f"Saved {recipe.name} v{recipe.version} ({recipe.id}); {recipe.stage}, "
+        f"{recipe.config.model.registry_key}, prompt {recipe.prompt.version}, "
+        f"schema {recipe.config.output_contract.version}"
+    )
+
+
+@recipes_app.command("list")
+def recipes_list() -> None:
+    """List every immutable recipe version."""
+    from altiscope.store.db import connect
+    from altiscope.store.recipes import list_recipes
+
+    with connect(load_settings().database_url) as conn:
+        rows = list_recipes(conn)
+    for recipe_id, name, version, stage, digest in rows:
+        typer.echo(f"{name} v{version}  {stage:<10} {digest[:16]}  {recipe_id}")
+
+
+@recipes_app.command("show")
+def recipes_show(
+    name: Annotated[str, typer.Argument(help="recipe name")],
+    version: Annotated[int | None, typer.Option(help="exact version; default is latest")] = None,
+) -> None:
+    """Inspect the exact frozen configuration and retained prompt content."""
+    import json
+
+    from altiscope.store.db import connect
+    from altiscope.store.recipes import load_recipe_version
+
+    try:
+        with connect(load_settings().database_url) as conn:
+            recipe = load_recipe_version(conn, name, version)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"{recipe.name} v{recipe.version} ({recipe.id})")
+    typer.echo(json.dumps(recipe.config.model_dump(mode="json"), indent=2, sort_keys=True))
+    typer.echo("Retained prompt source:")
+    typer.echo(recipe.prompt.source_text, nl=False)
 
 
 @app.command()
