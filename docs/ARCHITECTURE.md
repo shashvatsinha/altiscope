@@ -18,9 +18,9 @@ inclusion on 2026-09-10. See the [M2 walkthrough](M2-WALKTHROUGH.md) and
 [release evidence](releases/m2.md).
 
 The M3 integration branch also has immutable recipes, frozen comparison sources,
-reproducible comparison execution, prompt-only primary baselines, and optional
-independent whole-result assessment. M3 is not a released milestone: the human review
-UI, rich inspection, final study, and release evidence remain open.
+reproducible comparison execution, prompt-only primary baselines, optional independent
+whole-result assessment, and a guided exact-result human-review CLI. M3 is not a released
+milestone: rich comparison inspection, the final study, and release evidence remain open.
 
 | Workflow | Available now |
 |---|---|
@@ -31,6 +31,7 @@ UI, rich inspection, final study, and release evidence remain open.
 | History | Shared prompt/model-call records, with new versions created on request |
 | Experimental comparisons | Run exact recipe versions on one frozen PR or aggregate source, with isolated cache/history and default prompt-only baselines |
 | Independent assessment | Assess one exact successful comparison result against its exact saved source with a distinct frozen underlying model |
+| Human review | Inspect one exact result with its frozen source; retain usefulness, effort, initial and revised judgments, and ordered assessment exposure |
 | Demonstration | Credential-free engineer, manager, executive, and multi-level examples |
 
 The [M1 walkthrough](M1-WALKTHROUGH.md) covers individual PR commands. The
@@ -189,8 +190,9 @@ response. These checks exercise the software; usefulness and accuracy need human
 review of real generated reports. M3's versioned
 [evaluation protocol](evaluation/m3-protocol-v1.md) and
 [selected 20-PR set](evaluation/m3-eval-set-v1.md) define that future review without
-claiming it has run. Final source/recipe freeze, generation, judgments, and reporting
-remain issue #50's work.
+claiming it has run. The guided CLI persists the protocol's complete review records and
+conceals assessment output until an initial judgment is committed. Final source/recipe
+freeze, generation, real judgments, and reporting remain issue #50's work.
 
 ## 10. Open questions
 
