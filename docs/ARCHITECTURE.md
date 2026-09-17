@@ -19,8 +19,8 @@ inclusion on 2026-09-10. See the [M2 walkthrough](M2-WALKTHROUGH.md) and
 
 The M3 integration branch also has immutable recipes, frozen comparison sources,
 reproducible comparison execution, prompt-only primary baselines, optional independent
-whole-result assessment, and a guided exact-result human-review CLI. M3 is not a released
-milestone: rich comparison inspection, the final study, and release evidence remain open.
+whole-result assessment, guided exact-result human review, and saved comparison inspection.
+M3 is not a released milestone: the final study and release evidence remain open.
 
 | Workflow | Available now |
 |---|---|
@@ -32,6 +32,7 @@ milestone: rich comparison inspection, the final study, and release evidence rem
 | Experimental comparisons | Run exact recipe versions on one frozen PR or aggregate source, with isolated cache/history and default prompt-only baselines |
 | Independent assessment | Assess one exact successful comparison result against its exact saved source with a distinct frozen underlying model |
 | Human review | Inspect one exact result with its frozen source; retain usefulness, effort, initial and revised judgments, and ordered assessment exposure |
+| Comparison inspection | Show each saved PR or aggregate result, historical inputs, baseline labels, original and new costs, assessment status, and human review without exposing an unrecorded assessor verdict |
 | Demonstration | Credential-free engineer, manager, executive, and multi-level examples |
 
 The [M1 walkthrough](M1-WALKTHROUGH.md) covers individual PR commands. The

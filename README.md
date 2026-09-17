@@ -70,3 +70,6 @@ also run an optional whole-result assessment with a distinct pinned underlying m
 its output is stored separately and hidden by default for pre-judgment workflows. A
 guided exact-result review records correctness, usefulness, human effort, corrections,
 and actual assessment exposure without changing generated outputs.
+`altiscope show-comparison INVOCATION_UUID` inspects every saved PR or aggregate
+recipe result, historical inputs, costs, and review status. See the credential-free
+[M3 walkthrough](docs/M3-RECIPES.md#credential-free-create-run-inspect-and-review-walkthrough).

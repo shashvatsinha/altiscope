@@ -513,6 +513,37 @@ def comparisons_assess(
     typer.echo(f"Assessment calls: {run.measurements.call_count}; cost {cost}")
 
 
+@app.command("show-comparison")
+def show_comparison(
+    invocation_id: Annotated[str, typer.Argument(help="exact comparison invocation UUID")],
+    verbose: Annotated[
+        bool, typer.Option(help="include frozen input, recipe config, prompt, and attempts")
+    ] = False,
+    review_session: Annotated[
+        str | None,
+        typer.Option(help="show assessments already exposed in this recorded review session"),
+    ] = None,
+) -> None:
+    """Inspect every recorded outcome of a saved PR or aggregate comparison."""
+    import psycopg
+
+    from altiscope.comparison.inspection import render_comparison
+    from altiscope.store.db import connect
+
+    try:
+        with connect(load_settings().database_url) as conn:
+            output = render_comparison(
+                conn,
+                UUID(invocation_id),
+                verbose=verbose,
+                review_session_id=UUID(review_session) if review_session else None,
+            )
+        typer.echo(output, nl=False)
+    except (ValueError, psycopg.Error) as exc:
+        typer.echo(f"Could not show comparison: {exc}", err=True)
+        raise typer.Exit(1) from None
+
+
 @comparisons_app.command("review")
 def comparisons_review(  # noqa: PLR0917
     result_id: Annotated[str, typer.Argument(help="exact successful comparison-result UUID")],

@@ -202,3 +202,60 @@ including retained artifact content, exact result/source IDs, historical PR navi
 zero-versus-missing effort, presentation order, revisions, exposures, and observations.
 These local commands do not add authentication or access control; concealment supports the
 evaluation sequence and cannot undo exposure through another path.
+
+## Inspect a saved comparison
+
+Use the invocation ID printed by `comparisons run` or the offline example below:
+
+```bash
+altiscope show-comparison INVOCATION_UUID
+altiscope show-comparison INVOCATION_UUID --verbose
+```
+
+Every declared recipe appears in its original order, including a failure or pending
+member. The view shows the exact frozen source and recipe identities, prompt and schema
+versions, provider and underlying model, baseline membership, retained output or error,
+and historical input report IDs and PR links. For aggregate inputs, use the printed
+`show-report` or `show-aggregate` command to inspect each saved version. `--verbose`
+adds the complete prepared input, resolved recipe config, and prompt source.
+
+Generation and independent-assessment calls, token usage, cost estimates, latency,
+repairs, and current invocation spend are labeled separately. A reused result shows
+its original result and cost but zero new calls and no new model spend. Missing usage,
+cost, or latency is printed as unavailable. The one-step comparison has no aggregate
+tree-node accounting.
+
+Assessment status is visible, but its verdict and rationale stay hidden in this view.
+After an initial judgment is committed, reveal an assessment through the review
+workflow, which saves the exposure before displaying the verdict. Then inspect with
+that exact session ID to see only assessments exposed in that session:
+
+```bash
+altiscope reviews reveal REVIEW_SESSION_UUID ASSESSMENT_UUID
+altiscope show-comparison INVOCATION_UUID --review-session REVIEW_SESSION_UUID
+```
+
+## Credential-free create, run, inspect, and review walkthrough
+
+From the repository root, start Postgres, set `ALTISCOPE_DATABASE_URL`, and apply
+migrations as in the [M2 walkthrough](M2-WALKTHROUGH.md). Then run:
+
+```bash
+uv run python examples/m3/offline_flow.py
+```
+
+The script saves a synthetic PR snapshot, freezes its prepared source, saves two
+immutable fixture recipes and their prompt-only baselines, and runs all four with
+recorded responses. It makes no network or paid model call. It prints the source,
+invocation, recipe, and exact result IDs. Use the printed `show-comparison` command
+to inspect them. Use the printed `comparisons review` command to record a development
+review of one exact result; it prompts for correctness, usefulness, and each effort
+measure. Save the resulting review session ID, then verify persistence with:
+
+```bash
+altiscope reviews show REVIEW_SESSION_UUID
+altiscope reviews export REVIEW_SESSION_UUID --output /tmp/m3-offline-review.json
+```
+
+The script's synthetic output and any judgment about it are workflow checks only.
+The real selected cases, held-out handling, and human evidence for M3 belong to #50.
