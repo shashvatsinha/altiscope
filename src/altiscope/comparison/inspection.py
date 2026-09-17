@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from decimal import Decimal
 from typing import cast
 from uuid import UUID
@@ -23,10 +24,10 @@ def _money(value: Decimal | None, status: str) -> str:
     return "not incurred" if status == "not_incurred" else "unavailable"
 
 
-def _duration(start: object, finish: object) -> str:
+def _duration(start: datetime | None, finish: datetime | None) -> str:
     if start is None or finish is None:
         return "unavailable"
-    return f"{int((finish - start).total_seconds() * 1000)} ms"  # type: ignore[operator]
+    return f"{int((finish - start).total_seconds() * 1000)} ms"
 
 
 def _calls(
@@ -75,11 +76,12 @@ def _calls(
             + (f"; error {row[12]}" if row[12] else "")
         )
     count = len(rows)
+    cost_status = "not_incurred" if count == 0 else "complete" if cost_complete else "unavailable"
     return (
         lines,
         count,
         cost if count and cost_complete else None,
-        "complete" if count and cost_complete else "unavailable" if count else "not_incurred",
+        cost_status,
         latency if count and latency_complete else None,
     )
 
@@ -132,23 +134,30 @@ def _review_lines(
                 f"usefulness {usefulness['status']}"
                 + (f" {usefulness['score']}/5" if usefulness["score"] is not None else "")
             )
-            if selected and exposed and correctness["rationale"]:
+            show_text = selected and (revision["kind"] == "initial_blind" or bool(exposed))
+            if show_text and correctness["rationale"]:
                 lines.append(f"        rationale: {correctness['rationale']}")
-            if selected and exposed and correctness["correction"]:
+            if show_text and correctness["correction"]:
                 lines.append(f"        correction: {correctness['correction']}")
-            if selected and exposed and usefulness["rationale"]:
+            if show_text and usefulness["rationale"]:
                 lines.append(f"        usefulness rationale: {usefulness['rationale']}")
             lines.append(f"        effort: {json.dumps(revision['effort'], sort_keys=True)}")
-        for observation in cast(list[dict[str, object]], record["post_assessment_observations"]):
-            post_usefulness = cast(dict[str, object], observation["post_usefulness"])
-            lines.append(
-                f"      assessment observation {observation['observation_id']}: "
-                f"assessment-related effort "
-                f"{json.dumps(observation['assessment_related_effort'], sort_keys=True)}; "
-                f"post usefulness {post_usefulness['status']}"
-                + (f" {post_usefulness['score']}/5" if post_usefulness["score"] is not None else "")
-            )
-            if selected:
+        if selected:
+            for observation in cast(
+                list[dict[str, object]], record["post_assessment_observations"]
+            ):
+                post_usefulness = cast(dict[str, object], observation["post_usefulness"])
+                lines.append(
+                    f"      assessment observation {observation['observation_id']}: "
+                    f"assessment-related effort "
+                    f"{json.dumps(observation['assessment_related_effort'], sort_keys=True)}; "
+                    f"post usefulness {post_usefulness['status']}"
+                    + (
+                        f" {post_usefulness['score']}/5"
+                        if post_usefulness["score"] is not None
+                        else ""
+                    )
+                )
                 lines.append(
                     f"        observation detail: {json.dumps(observation, sort_keys=True)}"
                 )
@@ -227,7 +236,7 @@ def render_comparison(  # noqa: PLR0912, PLR0915
     total_cost_complete = True
     for member in member_rows:
         member_id, ordinal, recipe_id, label, disposition, result_id = member[:6]
-        recipe = load_recipe(conn, UUID(str(recipe_id)))
+        recipe = load_recipe(conn, UUID(str(recipe_id)), require_executable=False)
         targets = conn.execute(
             "SELECT recipe_version_id FROM comparison_member_baseline_targets "
             "WHERE member_id=%s ORDER BY recipe_version_id",
@@ -299,7 +308,9 @@ def render_comparison(  # noqa: PLR0912, PLR0915
         assessments = list_assessments(conn, target_result_id=result.id)
         lines.append("  Assessments: " + (str(len(assessments)) if assessments else "not run"))
         for assessment in assessments:
-            assessor = load_recipe(conn, assessment.assessor_recipe_version_id)
+            assessor = load_recipe(
+                conn, assessment.assessor_recipe_version_id, require_executable=False
+            )
             assessment_times = conn.execute(
                 "SELECT started_at,finished_at FROM comparison_assessments WHERE id=%s",
                 (assessment.id,),

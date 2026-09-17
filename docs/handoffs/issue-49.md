@@ -13,6 +13,10 @@ The implementation has not been pushed or integrated. Parent #6 and child #49 re
 - `--verbose` shows full frozen source, recipe configuration, prompt, and call attempts.
   `--review-session` only reveals assessment records whose exposure was persisted for
   that exact result/session. The default view hides verdicts and rationales.
+- A follow-up inspection review confirmed historical recipes load without executable
+  version checks, initial human rationale is visible in its selected session before
+  assessment exposure, and post-assessment observations remain session-scoped.
+  Zero-call cost is labeled `not incurred`.
 - `examples/m3/offline_flow.py` and `docs/M3-RECIPES.md` give a credential-free
   create/run/inspect/review flow for #50. There is no new migration or prompt version.
 

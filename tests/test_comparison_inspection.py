@@ -19,8 +19,18 @@ from altiscope.prompts import load_prompt
 from altiscope.store.accounts import save_account
 from altiscope.store.aggregates import load_pr_input
 from altiscope.store.baselines import register_primary_baseline
-from altiscope.store.comparisons import freeze_aggregate_source
-from altiscope.store.evaluation import record_exposure
+from altiscope.store.comparisons import (
+    TerminalResult,
+    complete_invocation,
+    create_invocation,
+    freeze_aggregate_source,
+    save_result,
+)
+from altiscope.store.evaluation import (
+    EffortMeasure,
+    record_exposure,
+    record_post_assessment_observation,
+)
 from altiscope.store.recipes import create_recipe
 from altiscope.summarize.context import render_user_prompt
 from altiscope.summarize.fixture import FixtureProvider, fixture_registry
@@ -49,7 +59,7 @@ pytestmark = [
 
 
 def test_pr_inspection_reuse_force_history_and_review_reveal(
-    database: str, snapshot: PullRequestSnapshot
+    database: str, snapshot: PullRequestSnapshot, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with psycopg.connect(database) as conn:
         source, _, target = _pr_target(conn, snapshot)
@@ -114,7 +124,9 @@ def test_pr_inspection_reuse_force_history_and_review_reveal(
 
         unexposed = render_comparison(conn, cached.invocation.id, review_session_id=session.id)
         assert "Source ambiguity." not in unexposed
-        record_exposure(
+        assert "The account matches the exact frozen source." in unexposed
+        assert "Useful with minor contextual qualification." in unexposed
+        exposure_id = record_exposure(
             conn,
             review_session_id=session.id,
             assessment_id=assessment.id,
@@ -126,6 +138,34 @@ def test_pr_inspection_reuse_force_history_and_review_reveal(
         assert "verdict inconclusive" in revealed
         assert "Source ambiguity." in revealed
         assert "Source ambiguity." not in render_comparison(conn, cached.invocation.id)
+        observation_id = record_post_assessment_observation(
+            conn,
+            review_session_id=session.id,
+            exposure_id=exposure_id,
+            assessment_id=assessment.id,
+            assessment_status="inconclusive",
+            assessment_verdict="inconclusive",
+            rationale="Observation after reveal.",
+            assessment_related_effort=EffortMeasure(
+                component="assessment_related", status="measured", value=7, method="timer"
+            ),
+            post_usefulness_status="measured",
+            post_usefulness_score=2,
+            post_usefulness_rationale="Less useful after checking.",
+            true_problem_detection=False,
+            false_alarm=False,
+            missed_problem=False,
+            inconclusive=True,
+        )
+        other_session = _new_session(conn, result_id=target.id)
+        _initial(conn, other_session.id)
+        assert str(observation_id) not in render_comparison(conn, cached.invocation.id)
+        assert str(observation_id) not in render_comparison(
+            conn, cached.invocation.id, review_session_id=other_session.id
+        )
+        assert str(observation_id) in render_comparison(
+            conn, cached.invocation.id, review_session_id=session.id
+        )
 
         forced = run_comparison(
             conn,
@@ -144,6 +184,39 @@ def test_pr_inspection_reuse_force_history_and_review_reveal(
         assert "generated" in fresh
         with pytest.raises(ValueError, match="not in this invocation"):
             render_comparison(conn, forced.invocation.id, review_session_id=session.id)
+
+        zero_call = create_invocation(
+            conn,
+            source_id=source.id,
+            recipe_version_ids=recipe_ids,
+            force_rerun=True,
+            retention="full",
+            execution_build="inspection-zero-call-test",
+        )
+        for member in zero_call.members:
+            now = datetime.now(UTC)
+            save_result(
+                conn,
+                member_id=member.id,
+                terminal=TerminalResult(
+                    "preflight_failed",
+                    now,
+                    now,
+                    error_code="credentials",
+                    error_message="fixture preflight failure",
+                ),
+                attempts=(),
+            )
+        complete_invocation(conn, zero_call.id)
+        zero_output = render_comparison(conn, zero_call.id)
+        assert "generation calls 0; generation cost not incurred" in zero_output
+        assert "Current invocation: 0 new calls; new cost not incurred" in zero_output
+
+        with monkeypatch.context() as patch:
+            patch.setattr("altiscope.store.recipes.CONFIGURATION_FORMAT_VERSION", 999)
+            historical = render_comparison(conn, cached.invocation.id)
+            assert str(assessment.id) in historical
+            assert str(target.id) in historical
 
     runner = CliRunner()
     shown = runner.invoke(app, ["show-comparison", str(cached.invocation.id), "--verbose"])
