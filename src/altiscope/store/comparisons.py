@@ -78,6 +78,7 @@ class ComparisonSource:
     query: dict[str, object] | None
     altitude: Literal["ic", "manager", "exec"] | None
     inputs: tuple[ReportInput, ...]
+    historical_pr_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -171,6 +172,8 @@ def freeze_pr_source(
     """Freeze one exact PR snapshot and its already-computed preparation."""
     if not prepared_text.strip():
         raise ValueError("prepared source text must not be blank")
+    if set(preparation_document) - {"facts", "manifest"}:
+        raise ValueError("PR preparation must contain only curated facts and manifest")
     source_id = uuid4()
     with conn.transaction():
         row = conn.execute(
@@ -192,11 +195,6 @@ def freeze_pr_source(
         }
         content_hash = _hash_json(frozen)
         text_hash = _hash_text(prepared_text)
-        stored_preparation_document = {
-            **preparation_document,
-            "snapshot": row[1],
-            "snapshot_source_hash": str(row[2]),
-        }
         conn.execute(
             "INSERT INTO comparison_sources"
             "(id,kind,stage,repository_id,pull_request_id,source_format_version,"
@@ -209,7 +207,7 @@ def freeze_pr_source(
                 snapshot_id,
                 source_format_version,
                 Jsonb(preparation_contract),
-                Jsonb(stored_preparation_document),
+                Jsonb(preparation_document),
                 prepared_text,
                 content_hash,
                 text_hash,
@@ -221,13 +219,14 @@ def freeze_pr_source(
         "pr_summary",
         int(row[0]),
         snapshot_id,
-        stored_preparation_document,
+        preparation_document,
         prepared_text,
         content_hash,
         text_hash,
         None,
         None,
         (),
+        str(row[1]["html_url"]) if row[1].get("html_url") else None,
     )
 
 
@@ -389,16 +388,20 @@ def load_source(conn: psycopg.Connection, source_id: UUID | str) -> ComparisonSo
         for item in input_rows
     )
     preparation_document = cast(dict[str, object], row[5])
-    if row[1] == "pr" and "snapshot" not in preparation_document:
+    historical_pr_url: str | None = None
+    if row[1] == "pr":
+        # Older review workflow rows included a raw snapshot in this JSON. The
+        # immutable pull_requests row owns it; keep it out of review/assessment data.
+        preparation_document = {
+            key: value
+            for key, value in preparation_document.items()
+            if key not in ("snapshot", "snapshot_source_hash")
+        }
         snapshot_row = conn.execute(
-            "SELECT normalized_snapshot,source_hash FROM pull_requests WHERE id=%s", (row[4],)
+            "SELECT normalized_snapshot FROM pull_requests WHERE id=%s", (row[4],)
         ).fetchone()
         if snapshot_row is not None:
-            preparation_document = {
-                **preparation_document,
-                "snapshot": snapshot_row[0],
-                "snapshot_source_hash": str(snapshot_row[1]),
-            }
+            historical_pr_url = snapshot_row[0].get("html_url")
     return ComparisonSource(
         UUID(str(row[0])),
         row[1],
@@ -412,6 +415,7 @@ def load_source(conn: psycopg.Connection, source_id: UUID | str) -> ComparisonSo
         row[9],
         row[10],
         inputs,
+        historical_pr_url,
     )
 
 

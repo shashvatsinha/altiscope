@@ -126,7 +126,15 @@ def _assessment_input(
             "pull_request_snapshot_id": source.pull_request_id,
             "content_hash": source.content_hash,
             "prepared_text_hash": source.prepared_text_hash,
-            "preparation": source.preparation_document,
+            "preparation": (
+                {
+                    key: source.preparation_document[key]
+                    for key in ("facts", "manifest")
+                    if key in source.preparation_document
+                }
+                if source.kind == "pr"
+                else source.preparation_document
+            ),
             "query": source.query,
             "altitude": source.altitude,
             "input_versions": [

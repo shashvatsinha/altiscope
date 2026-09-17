@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
-from typing import cast
+from typing import Literal, cast
 from uuid import UUID
 
 import psycopg
@@ -62,7 +62,7 @@ def _new_session(
         reader_role="ic",
         familiarity_level="domain",
         familiarity_basis="Python review experience plus recorded preparation",
-        declared_prior_exposure=exposure,  # type: ignore[arg-type]
+        declared_prior_exposure=cast(Literal["none_declared", "known", "unknown"], exposure),
         result_presentation_ordinal=1,
         started_at=datetime.now(UTC),
     )
@@ -74,7 +74,7 @@ def _initial(conn: psycopg.Connection, session_id: UUID, *, blind: str = "confir
         review_session_id=session_id,
         revision=ReviewRevisionInput(
             kind="initial_blind",
-            blind_status=blind,  # type: ignore[arg-type]
+            blind_status=cast(Literal["confirmed_unexposed", "known_exposed", "unknown"], blind),
             correctness_label="correct",
             correctness_rationale="The account matches the exact frozen source.",
             usefulness_status="measured",
@@ -284,6 +284,93 @@ def test_prior_exposure_and_assessment_availability_states(
         prior_history = cast(list[dict[str, object]], prior_record["assessment_history"])
         exposed = [item for item in prior_history if item["exposed"]]
         assert exposed[0]["verdict"] == "inconclusive"
+
+
+def test_unknown_assessment_status_is_rejected():
+    with pytest.raises(ValueError, match="unsupported persisted assessment status"):
+        assessment_observation_state("future_status")
+
+
+def test_cli_observe_prompts_for_inconclusive_outcomes(
+    database: str, snapshot: PullRequestSnapshot, monkeypatch: pytest.MonkeyPatch
+):
+    with psycopg.connect(database) as conn:
+        _, _, target = _pr_target(conn, snapshot)
+        assessment = run_assessment(
+            conn,
+            target_result_id=target.id,
+            assessor_recipe_version_id=_assessor(conn).id,
+            retention="full",
+            provider_factory=lambda _: RecordingFixture(
+                ['{"verdict":"inconclusive","rationale":"Evidence is ambiguous."}']
+            ),
+        ).assessment
+        session = _new_session(conn, result_id=target.id)
+        _initial(conn, session.id)
+        exposure_id = record_exposure(
+            conn,
+            review_session_id=session.id,
+            assessment_id=assessment.id,
+            kind="guided_reveal",
+            presentation_ordinal=1,
+            occurred_at=datetime.now(UTC),
+        )
+
+    monkeypatch.setenv("ALTISCOPE_DATABASE_URL", database)
+    observed = CliRunner().invoke(
+        app,
+        ["reviews", "observe", str(session.id), str(exposure_id)],
+        input="Observed ambiguity\n\n0\n\n\n3\nUseful context\ny\nn\ny\nn\n",
+    )
+    assert observed.exit_code == 0, observed.output
+    with psycopg.connect(database) as conn:
+        record = export_review_record(conn, session.id)
+    observations = cast(list[dict[str, object]], record["post_assessment_observations"])
+    assert len(observations) == 1
+    assert observations[0]["assessment_status"] == "inconclusive"
+    assert observations[0]["true_problem_detection"] is True
+    assert observations[0]["false_alarm"] is False
+    assert observations[0]["missed_problem"] is True
+    assert observations[0]["inconclusive"] is False
+
+
+def test_cli_observe_rejects_foreign_exposure_before_prompting(
+    database: str, snapshot: PullRequestSnapshot, monkeypatch: pytest.MonkeyPatch
+):
+    with psycopg.connect(database) as conn:
+        _, _, target = _pr_target(conn, snapshot)
+        assessment = run_assessment(
+            conn,
+            target_result_id=target.id,
+            assessor_recipe_version_id=_assessor(conn).id,
+            retention="full",
+            provider_factory=lambda _: RecordingFixture(
+                ['{"verdict":"inconclusive","rationale":"Evidence is ambiguous."}']
+            ),
+        ).assessment
+        other_session = _new_session(conn, result_id=target.id)
+        _initial(conn, other_session.id)
+        foreign_exposure_id = record_exposure(
+            conn,
+            review_session_id=other_session.id,
+            assessment_id=assessment.id,
+            kind="guided_reveal",
+            presentation_ordinal=1,
+            occurred_at=datetime.now(UTC),
+        )
+        current_session = _new_session(conn, result_id=target.id)
+        _initial(conn, current_session.id)
+
+    monkeypatch.setenv("ALTISCOPE_DATABASE_URL", database)
+    observed = CliRunner().invoke(
+        app, ["reviews", "observe", str(current_session.id), str(foreign_exposure_id)]
+    )
+    assert observed.exit_code == 1
+    assert "exposure does not belong to the review session" in observed.output
+    assert "Assessment observation rationale" not in observed.output
+    assert "Accepted true problem detection?" not in observed.output
+    with psycopg.connect(database) as conn:
+        assert export_review_record(conn, current_session.id)["post_assessment_observations"] == []
 
 
 def test_no_assessment_is_exported_as_not_run(database: str, snapshot: PullRequestSnapshot):

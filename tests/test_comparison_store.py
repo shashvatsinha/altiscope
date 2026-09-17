@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from datetime import UTC, datetime
 from typing import Literal
@@ -134,6 +136,28 @@ def test_results_round_trip_with_attempts_failures_and_reuse(
 
     with psycopg.connect(database) as conn:
         source, first, second, invocation, _, result = _setup_comparison(conn, snapshot, retention)
+        source_row = conn.execute(
+            "SELECT c.preparation_document,c.preparation_contract,c.prepared_text,"
+            "c.source_format_version,c.content_hash,p.normalized_snapshot,p.source_hash "
+            "FROM comparison_sources c JOIN pull_requests p ON p.id=c.pull_request_id "
+            "WHERE c.id=%s",
+            (source.id,),
+        ).fetchone()
+        assert source_row is not None
+        assert source_row[0] == source.preparation_document
+        assert set(source_row[0]) == {"facts", "manifest"}
+        frozen = {
+            "snapshot_id": source.pull_request_id,
+            "snapshot": source_row[5],
+            "snapshot_source_hash": str(source_row[6]),
+            "preparation": source_row[0],
+            "preparation_contract": source_row[1],
+            "prepared_text": source_row[2],
+            "source_format_version": source_row[3],
+        }
+        canonical = json.dumps(frozen, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        assert hashlib.sha256(canonical.encode()).hexdigest() == source_row[4]
+        assert load_source(conn, source.id).preparation_document == source_row[0]
         loaded = load_result(conn, result.id)
         assert loaded.output == {"review": "Frozen comparison output."}
         assert len(loaded.call_ids) == 1

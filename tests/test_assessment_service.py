@@ -331,6 +331,12 @@ def test_pr_assessment_uses_exact_saved_input_and_is_reveal_safe(
         sent_document = json.loads(provider.users[0].split("\n\n", 1)[1])
         assert sent_document == assessment.input_document
         assert sent_document["source"]["exact_prepared_text"] == prepared
+        assert set(sent_document["source"]["preparation"]) == {"facts", "manifest"}
+        assert "snapshot" not in sent_document["source"]["preparation"]
+        stored_preparation = conn.execute(
+            "SELECT preparation_document FROM comparison_sources WHERE id=%s", (source.id,)
+        ).fetchone()
+        assert stored_preparation == (source.preparation_document,)
         assert sent_document["target"]["generated_result"] == target.output
         assert run.measurements.call_count == 1
         assert list_assessments(conn, target_result_id=target.id) == (assessment,)

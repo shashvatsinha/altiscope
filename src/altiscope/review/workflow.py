@@ -9,7 +9,10 @@ from uuid import UUID
 
 import psycopg
 
+from altiscope.assessment.status import assessment_observation_state
 from altiscope.store.evaluation import save_evaluation_artifact
+
+__all__ = ["EvaluationArtifacts", "assessment_observation_state", "retain_protocol_artifacts"]
 
 
 @dataclass(frozen=True)
@@ -51,12 +54,3 @@ def retain_protocol_artifacts(
         content={"media_type": "application/json", "example": contract_example},
     )
     return EvaluationArtifacts(protocol_id, dataset_id, contract_id)
-
-
-def assessment_observation_state(status: str) -> str:
-    """Map persisted execution outcomes to the protocol's observation availability states."""
-    if status in ("succeeded", "inconclusive"):
-        return status
-    if status in ("preflight_failed", "invalid_output", "refused", "failed"):
-        return "failed"
-    raise ValueError(f"unsupported persisted assessment status: {status}")

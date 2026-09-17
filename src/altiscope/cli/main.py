@@ -779,6 +779,7 @@ def reviews_observe(
         ReviewRevisionInput,
         append_review_revision,
         complete_review_session,
+        load_exposure_assessment_id,
         record_post_assessment_observation,
     )
 
@@ -786,14 +787,10 @@ def reviews_observe(
         session_uuid = UUID(review_session_id)
         exposure_uuid = UUID(exposure_id)
         with connect(load_settings().database_url) as conn:
-            exposure = conn.execute(
-                "SELECT assessment_id FROM assessment_exposures "
-                "WHERE id=%s AND review_session_id=%s",
-                (exposure_uuid, session_uuid),
-            ).fetchone()
-            if exposure is None:
-                raise ValueError("exposure does not belong to the review session")
-            assessment = load_assessment(conn, UUID(str(exposure[0])))
+            assessment_id = load_exposure_assessment_id(
+                conn, review_session_id=session_uuid, exposure_id=exposure_uuid
+            )
+            assessment = load_assessment(conn, assessment_id)
             observation_status = assessment_observation_state(assessment.status)
             rationale = typer.prompt("Assessment observation rationale")
             assessment_effort = _prompt_effort("assessment_related")
@@ -802,18 +799,16 @@ def reviews_observe(
             false_alarm: bool | None = None
             missed_problem: bool | None = None
             inconclusive: bool | None = None
-            if observation_status == "succeeded":
+            if observation_status in ("succeeded", "inconclusive"):
                 true_detection = typer.confirm("Accepted true problem detection?", default=False)
                 false_alarm = typer.confirm("Rejected false alarm?", default=False)
                 missed_problem = typer.confirm(
                     "Material problem missed by assessment?", default=False
                 )
-                inconclusive = typer.confirm("Observation remains inconclusive?", default=False)
-            elif observation_status == "inconclusive":
-                true_detection = False
-                false_alarm = False
-                missed_problem = False
-                inconclusive = True
+                inconclusive = typer.confirm(
+                    "Observation remains inconclusive?",
+                    default=observation_status == "inconclusive",
+                )
 
             resulting_revision_id = None
             if revise_judgment:

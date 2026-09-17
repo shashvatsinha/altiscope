@@ -13,6 +13,8 @@ import psycopg
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from altiscope.assessment.status import assessment_observation_state
+
 ArtifactKind = Literal["protocol", "dataset", "record_contract"]
 UsefulnessStatus = Literal["measured", "unavailable", "not_applicable"]
 EffortComponent = Literal["preparation", "reading", "checking", "correction", "assessment_related"]
@@ -373,6 +375,19 @@ def complete_review_session(
             raise ValueError("review session not found or already completed")
 
 
+def load_exposure_assessment_id(
+    conn: psycopg.Connection, *, review_session_id: UUID, exposure_id: UUID
+) -> UUID:
+    """Resolve an assessment only for an exposure owned by this review session."""
+    row = conn.execute(
+        "SELECT assessment_id FROM assessment_exposures WHERE id=%s AND review_session_id=%s",
+        (exposure_id, review_session_id),
+    ).fetchone()
+    if row is None:
+        raise ValueError("exposure does not belong to the review session")
+    return UUID(str(row[0]))
+
+
 def record_post_assessment_observation(  # noqa: PLR0912
     conn: psycopg.Connection,
     *,
@@ -397,13 +412,13 @@ def record_post_assessment_observation(  # noqa: PLR0912
         raise ValueError("assessment observation requires assessment-related effort")
     if not rationale.strip():
         raise ValueError("assessment observation rationale must not be blank")
-    if assessment_status == "succeeded" and any(
+    if assessment_status in ("succeeded", "inconclusive") and any(
         value is None
         for value in (true_problem_detection, false_alarm, missed_problem, inconclusive)
     ):
-        raise ValueError("successful assessment observations require all four boolean outcomes")
-    if assessment_status == "succeeded" and assessment_verdict is None:
-        raise ValueError("successful assessment observations require a verdict")
+        raise ValueError("completed assessment observations require all four boolean outcomes")
+    if assessment_status in ("succeeded", "inconclusive") and assessment_verdict is None:
+        raise ValueError("completed assessment observations require a verdict")
     if post_usefulness_status == "measured":
         if post_usefulness_score is None or not (1 <= post_usefulness_score <= 5):
             raise ValueError("measured post-assessment usefulness requires a score from 1 to 5")
@@ -425,9 +440,7 @@ def record_post_assessment_observation(  # noqa: PLR0912
         ).fetchone()
         if assessment is None:
             raise ValueError("assessment not found")
-        stored_status = (
-            assessment[0] if assessment[0] in ("succeeded", "inconclusive") else "failed"
-        )
+        stored_status = assessment_observation_state(str(assessment[0]))
         if assessment_status != stored_status or assessment_verdict != assessment[1]:
             raise ValueError("observation status and verdict must match the exact assessment")
         if resulting_revision_id is not None:
@@ -510,8 +523,9 @@ def _artifact_export(
     }
 
 
-def _historical_repository_locator(current: str, preparation_document: dict[str, object]) -> str:
-    snapshot = preparation_document.get("snapshot")
+def _historical_repository_locator(
+    current: str, preparation_document: dict[str, object], snapshot: dict[str, object] | None
+) -> str:
     if isinstance(snapshot, dict):
         locator = snapshot.get("repository")
         if isinstance(locator, str) and locator.strip():
@@ -542,7 +556,8 @@ def load_review_record(
         "s.protocol_artifact_id,s.dataset_artifact_id,s.record_contract_artifact_id,"
         "s.case_id,s.case_kind,s.case_group,s.reader_role,s.familiarity_level,"
         "s.familiarity_basis,s.declared_prior_exposure,s.result_presentation_ordinal,"
-        "s.started_at,s.completed_at,r.github_id,r.owner,r.name,p.number,c.preparation_document "
+        "s.started_at,s.completed_at,r.github_id,r.owner,r.name,p.number,"
+        "c.preparation_document,p.normalized_snapshot "
         "FROM review_sessions s JOIN comparison_sources c ON c.id=s.source_id "
         "JOIN repositories r ON r.id=c.repository_id "
         "LEFT JOIN pull_requests p ON p.id=c.pull_request_id WHERE s.id=%s",
@@ -555,7 +570,7 @@ def load_review_record(
     contract = _artifact_export(conn, UUID(str(row[7])))
     assert protocol is not None and contract is not None
     current_locator = f"{row[19]}/{row[20]}"
-    historical_locator = _historical_repository_locator(current_locator, row[22])
+    historical_locator = _historical_repository_locator(current_locator, row[22], row[23])
     preparation_row = conn.execute(
         "SELECT id,effort FROM review_preparations "
         "WHERE source_id=%s AND reviewer_id=%s AND case_id=%s",

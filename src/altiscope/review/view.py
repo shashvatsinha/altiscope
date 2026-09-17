@@ -15,11 +15,8 @@ def render_frozen_source(source: ComparisonSource) -> str:
     ]
     links: list[str] = []
     if source.kind == "pr":
-        snapshot = source.preparation_document.get("snapshot")
-        if isinstance(snapshot, dict):
-            url = snapshot.get("html_url")
-            if isinstance(url, str):
-                links.append(url)
+        if source.historical_pr_url is not None:
+            links.append(source.historical_pr_url)
     else:
         links.extend(url for item in source.inputs for url in item.pr_urls)
     lines.extend(f"  {url}" for url in dict.fromkeys(links))
