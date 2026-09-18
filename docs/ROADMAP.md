@@ -20,8 +20,8 @@ component completion alone does not authorize a release.
 3. [Different models, measurable results — #6](https://github.com/shashvatsinha/altiscope/issues/6).
    Versioned recipes, optional independent whole-result assessment, model comparisons,
    and a real-source workflow demonstration with exact results and review history.
-   The selected 20-PR MarkItDown quality study needs qualified reviewers and remains
-   later work; see [ADR-0013](adr/0013-m3-workflow-release-scope.md).
+   A MarkItDown quality study needs qualified reviewers and fresh held-out cases
+   after the operational run; see [ADR-0013](adr/0013-m3-workflow-release-scope.md).
 4. [A product people can explore — #7](https://github.com/shashvatsinha/altiscope/issues/7).
    Public hosted UI/API demo with evidence navigation and feedback.
 5. [A team's working tool — #8](https://github.com/shashvatsinha/altiscope/issues/8).

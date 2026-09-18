@@ -128,9 +128,10 @@ The 20 prepared PR texts estimate to 58,780 tokens in total before system
 prompts and schemas. Applying the frozen per-request output reservations to
 all 134 planned calls, and allowing a conservative 20,000 input tokens for
 the aggregate plus source/output wrapping in assessments, gives an estimated
-**about US$8 at maximum initial output** and **about US$16 if every request
-needs its one allowed malformed-output repair**. The proposed cap is
-**US$25**. These are configured-price planning estimates, not a provider bill;
+**about US$8 for initial calls** and **US$25–30 as a conservative allowance
+for repairs, eight upstream reports, and assessment input wrapping**. The
+revised proposed cap is **US$35**. These are configured-price planning
+estimates, not a provider bill;
 actual usage, cache pricing, and errors may differ. Check recorded cost after
 each PR and before each aggregate/upstream stage; stop before projected spend
 exceeds the approved cap. The cap is **awaiting owner approval**.
@@ -143,27 +144,35 @@ without logging or saving its value. The key was not used in this preparation.
 
 Use the exact 20 saved source IDs in the inventory and recipe IDs above; do
 not rerun preparation. Set `ALTISCOPE_DATABASE_URL` to the same local database
-and `ALTISCOPE_MODELS_CONFIG=config/models.yaml` for upstream production reports.
-Keep the OpenRouter key outside version control. The per-PR pattern is:
+and keep the OpenRouter key outside version control. The runner loads the
+checked-in model registry for upstream production reports and writes
+`docs/evaluation/m3-workflow-progress.json` after every case. It dry-runs by
+default. Once the owner approves a cap, execute one stage at a time. Upstream
+reports come first; the run specification freezes their exact versions before
+any held-out comparison output is displayed:
 
 ```bash
-uv run altiscope comparisons run SOURCE_UUID_FROM_INVENTORY \
-  --recipe 3c846144-d947-422a-83eb-c2570eeb3df8 \
-  --recipe 81841177-eb34-4ae7-b4c2-3ab8e2d8408c
-uv run altiscope summarize microsoft/markitdown HELD_OUT_PR_NUMBER
+uv run python examples/m3/run_openrouter_workflow.py --phase upstream --cap-usd 35 --execute
 uv run python examples/m3/freeze_openrouter_aggregate.py EIGHT_REPORT_IDS_IN_DATASET_ORDER
-uv run altiscope comparisons run AGGREGATE_SOURCE_UUID \
-  --recipe b39518cd-7cd7-4045-8fcf-fa98cb9d0c46 \
-  --recipe b6b568f4-98fd-4a65-b9b0-c2e82c9f17d7
-uv run altiscope comparisons assess RESULT_UUID \
-  --recipe cd012661-0d58-4d44-bb11-2d406ec26b04
+uv run python examples/m3/freeze_workflow_spec.py \
+  --aggregate-source-id AGGREGATE_SOURCE_UUID --cap-usd 35 --operator owner-approved-run
+uv run python examples/m3/run_openrouter_workflow.py --phase pr --cap-usd 35 --execute
+uv run python examples/m3/run_openrouter_workflow.py --phase aggregate \
+  --aggregate-source-id AGGREGATE_SOURCE_UUID --cap-usd 35 --execute
+uv run python examples/m3/run_openrouter_workflow.py --phase assess --cap-usd 35 --execute
 ```
 
-Run the first command for every inventory row; generate eight upstream reports
-in the held-out order in the dataset; use their exact IDs in the aggregate
-freeze command. Run the final assessment command for each of the 42 explicit
-candidate results. Do not inspect the real assessor verdict before any owner
+Use the eight report IDs recorded by the upstream stage in the held-out order
+from the dataset. The runner resumes completed cases and applies a conservative
+next-case cost ceiling against recorded OpenRouter spend before each call.
+It stops if any call cost is unavailable for cap accounting. The assessment
+stage targets only the two explicit candidates per successful case. Do not
+inspect real assessor verdicts before any owner
 workflow review that is intended to test the reveal sequence.
+`freeze_workflow_spec.py` retains full protocol/dataset/config/source/recipe
+content and hashes plus exact aggregate input report versions. It refuses
+to overwrite an existing specification. An exploratory rerun needs a new
+version and must preserve the original spec and results.
 Record invocation, member, result, assessment, call, failure, usage, latency,
 and cost IDs in a new immutable manifest before claiming live execution complete.
 The final M3 walkthrough and release note must link saved outputs, owner workflow

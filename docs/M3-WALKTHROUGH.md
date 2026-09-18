@@ -87,10 +87,15 @@ checked-in [20-source inventory](evaluation/m3-workflow-sources-v1.json) and
 [plan](evaluation/m3-workflow-plan.md) identify the prepared local run.
 
 Live calls require an approved spend cap and an OpenRouter key. The plan lists
-the exact recipe IDs and per-stage commands. Eight successful saved PR reports
+the exact recipe IDs and resumable runner commands. Its default mode makes no
+calls; `--execute` runs a selected paid stage after cap approval. It records
+progress after every case and checks a conservative next-case cost ceiling
+against saved OpenRouter spend. Eight successful saved PR reports
 for the held-out window must be generated and passed in dataset order to
 `examples/m3/freeze_openrouter_aggregate.py`; it checks every report against
-the frozen snapshot ID. The aggregate comparison then runs on that one frozen
+the frozen snapshot ID. `examples/m3/freeze_workflow_spec.py` then retains the
+exact aggregate inputs, source and recipe content, hashes, and approved cap
+before comparisons run. The aggregate comparison runs on that one frozen
 source. Assessments remain optional records attached to exact successful
 candidate results.
 
