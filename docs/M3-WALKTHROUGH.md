@@ -1,10 +1,13 @@
 # M3 workflow walkthrough
 
-Status: the credential-free workflow and 20-source preparation are repeatable.
-The live OpenRouter run, owner inspection, and release are pending. See the
+Status: the credential-free workflow, 20-source preparation, and bounded
+eight-PR OpenRouter workflow are complete. Owner inspection remains. See the
 [execution plan](evaluation/m3-workflow-plan.md) for exact local IDs, call
 estimate, and remaining steps. [ADR-0013](adr/0013-m3-workflow-release-scope.md)
 defines the workflow demonstration's claim boundary.
+
+The human-facing owner review handoff is [M3-OWNER-REVIEW.md](evaluation/M3-OWNER-REVIEW.md).
+The JSON progress and run-spec files are audit records referenced by that handoff.
 
 ## Set up
 
