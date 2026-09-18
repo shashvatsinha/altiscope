@@ -72,4 +72,6 @@ guided exact-result review records correctness, usefulness, human effort, correc
 and actual assessment exposure without changing generated outputs.
 `altiscope show-comparison INVOCATION_UUID` inspects every saved PR or aggregate
 recipe result, historical inputs, costs, and review status. See the credential-free
-[M3 walkthrough](docs/M3-RECIPES.md#credential-free-create-run-inspect-and-review-walkthrough).
+[M3 walkthrough](docs/M3-WALKTHROUGH.md).
+M3's release demonstration tests this workflow. A qualified human evaluation of
+the selected 20 PRs remains future work; see [ADR-0013](docs/adr/0013-m3-workflow-release-scope.md).

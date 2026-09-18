@@ -1,0 +1,225 @@
+{
+  "kind": "m3-workflow-source-inventory-v1",
+  "cases": [
+    {
+      "case_id": "m3-dev-pr-001",
+      "group": "development",
+      "pr_number": 19,
+      "snapshot_id": 12,
+      "snapshot_version": 2,
+      "source_id": "00683907-5b64-4535-8964-4d3efdd4d760",
+      "source_hash": "e1297d3b9bbe4d6eb418e8f336e87a2269b4a3565cca2567675f14c9075d8ac9",
+      "prepared_text_hash": "fdb6166c4dfdf8ca512f25d041113d170f5d1cacc77aba88852800ab7bb7eaba",
+      "estimated_prepared_tokens": 1640
+    },
+    {
+      "case_id": "m3-dev-pr-002",
+      "group": "development",
+      "pr_number": 22,
+      "snapshot_id": 13,
+      "snapshot_version": 2,
+      "source_id": "d2e8c352-812f-4a4f-85c6-cca4003c0635",
+      "source_hash": "989cf973ef0c462c4a19d10eb977e833943356b5a1a1096e660d2c542ebad671",
+      "prepared_text_hash": "5dcf3d507d95e73f5d90386ddf8abdb6f65b5ba90cd81411d0d91da431d854bb",
+      "estimated_prepared_tokens": 3615
+    },
+    {
+      "case_id": "m3-dev-pr-003",
+      "group": "development",
+      "pr_number": 33,
+      "snapshot_id": 6,
+      "snapshot_version": 1,
+      "source_id": "15abfc47-30f9-4716-bf2d-cb36b5de0542",
+      "source_hash": "4e723d0db51d03ca01ae34a1a24c5a4b0bea096b20d4ca18f4b7a4751dddab8c",
+      "prepared_text_hash": "2077d804f1e07940aec0beed04159787d4bf10410d5ff1f6cd93d9180cf11031",
+      "estimated_prepared_tokens": 1551
+    },
+    {
+      "case_id": "m3-dev-pr-004",
+      "group": "development",
+      "pr_number": 48,
+      "snapshot_id": 7,
+      "snapshot_version": 1,
+      "source_id": "d7ecc3eb-e310-4720-9bb1-3c480b426195",
+      "source_hash": "a863bf0927f24441f2f4e0cc3044037af4596e4192b11f93e2303b26726882d1",
+      "prepared_text_hash": "a75cfde52fb69fe573f5ab82c7720529174ebfbcaad94d9ed8ebc4df3165436f",
+      "estimated_prepared_tokens": 1080
+    },
+    {
+      "case_id": "m3-dev-pr-005",
+      "group": "development",
+      "pr_number": 71,
+      "snapshot_id": 8,
+      "snapshot_version": 1,
+      "source_id": "7f9a84d6-4db4-46da-bf57-45b5ad34657e",
+      "source_hash": "7ff94c0ff4779d852ae237468a13eb2fc27e40f81c8a2ebfeac679354581e2cf",
+      "prepared_text_hash": "0650aff0ead35bb316478adbd96f6eef8fa628f71e9df7c9f09945332646f433",
+      "estimated_prepared_tokens": 1948
+    },
+    {
+      "case_id": "m3-dev-pr-006",
+      "group": "development",
+      "pr_number": 97,
+      "snapshot_id": 9,
+      "snapshot_version": 1,
+      "source_id": "6b09392c-d28c-4ae0-9af1-7faa75440ad0",
+      "source_hash": "1cff9f0ffb54970346ad65a7e1320ba13120c4d39e79a73c013f03d39437efbb",
+      "prepared_text_hash": "7aa4f1f31f2fc0a2188f8537a21ba2a88ea449556c12f0387a8a26eaf3590be7",
+      "estimated_prepared_tokens": 3358
+    },
+    {
+      "case_id": "m3-dev-pr-007",
+      "group": "development",
+      "pr_number": 129,
+      "snapshot_id": 10,
+      "snapshot_version": 1,
+      "source_id": "227818db-4d6f-413a-a4a0-212e8c043d06",
+      "source_hash": "e1fb2ece323c21e64e2b6c805e2b2d9f10705c3df5278d43b541495616f658aa",
+      "prepared_text_hash": "50f2546cf54ba2e54034bca41a7caf83685be8fff925926a89a49e4e6f325fbf",
+      "estimated_prepared_tokens": 2168
+    },
+    {
+      "case_id": "m3-dev-pr-008",
+      "group": "development",
+      "pr_number": 169,
+      "snapshot_id": 11,
+      "snapshot_version": 1,
+      "source_id": "f84a0bf9-9d7f-4c33-9d53-718c40f71b32",
+      "source_hash": "e0da5c80c4c38c6b537b4afead1c6d5f083cc280b765f2d616f3be9e0345da20",
+      "prepared_text_hash": "8123d48a955356215e7364e7dfc804974ee59b7b2eef2b08ac158eb124de4b7a",
+      "estimated_prepared_tokens": 2085
+    },
+    {
+      "case_id": "m3-dev-pr-009",
+      "group": "development",
+      "pr_number": 196,
+      "snapshot_id": 14,
+      "snapshot_version": 1,
+      "source_id": "50f5149e-1a5a-416f-8337-e0d7f2224706",
+      "source_hash": "90faaad251536425315bacb4bf21fc0e1331d14ccc4cd5b88e757944fbf22cc8",
+      "prepared_text_hash": "0d1250f4362b7007df082641acc8403793ed0a0f97fe723e461284f35cb6de4e",
+      "estimated_prepared_tokens": 2789
+    },
+    {
+      "case_id": "m3-dev-pr-010",
+      "group": "development",
+      "pr_number": 303,
+      "snapshot_id": 15,
+      "snapshot_version": 1,
+      "source_id": "a1309907-909a-454f-97be-d967eab5dab2",
+      "source_hash": "32a7a5a3f54e436e36304c7e715527f4c642980a694b3d228692d6a7ac23cb3d",
+      "prepared_text_hash": "cfd290be154abf4adc7714e83efed2a5b7236770f6913411d37608154cd60dea",
+      "estimated_prepared_tokens": 2963
+    },
+    {
+      "case_id": "m3-dev-pr-011",
+      "group": "development",
+      "pr_number": 1153,
+      "snapshot_id": 16,
+      "snapshot_version": 1,
+      "source_id": "dd2d4d6b-1b91-4b57-a03c-2e7128f9a4a5",
+      "source_hash": "cc4898d9bb0a088c0a7c53a1567fe5b31c397776ac2f3785cf96bd1346bda375",
+      "prepared_text_hash": "3104108ec45bedd4c039162cc58e045bd8528a5f6d1658f6898a5ebe398752f6",
+      "estimated_prepared_tokens": 4885
+    },
+    {
+      "case_id": "m3-dev-pr-012",
+      "group": "development",
+      "pr_number": 1160,
+      "snapshot_id": 17,
+      "snapshot_version": 1,
+      "source_id": "53333146-caed-41da-9262-a76151f650c8",
+      "source_hash": "83fb8f315edb43d64929c614f7cdee1996f4ad630ff7cc72ba97a6b84fa5b14d",
+      "prepared_text_hash": "01ce37ce5a58b8de180d4fdb5e384902deec76dc69ff2c727de0904c906e3a96",
+      "estimated_prepared_tokens": 16185
+    },
+    {
+      "case_id": "m3-holdout-pr-001",
+      "group": "held_out",
+      "pr_number": 1259,
+      "snapshot_id": 18,
+      "snapshot_version": 1,
+      "source_id": "7bf2157d-1ab6-4807-bdfb-6ece53ffd16b",
+      "source_hash": "a4c519a4e99988c129e70209f4e35fd040d3e4c486ff4e214f346c1efeef6526",
+      "prepared_text_hash": "356d9647334f1ea8b7b96bc023962a0c3e39342b4a6912e91cf1d5d797229911",
+      "estimated_prepared_tokens": 2110
+    },
+    {
+      "case_id": "m3-holdout-pr-002",
+      "group": "held_out",
+      "pr_number": 1256,
+      "snapshot_id": 19,
+      "snapshot_version": 1,
+      "source_id": "48d89fe1-ae9e-455d-a58f-ac4396cdf991",
+      "source_hash": "d707bbc3f7167bb24818dc2b48317b4aa5f18550fd89a4f9941a8ea5bc08ce42",
+      "prepared_text_hash": "fc97e5e6087bc0b2f84f566fbbd58af686cc5f2b2bf2fd1d133f987f40df738b",
+      "estimated_prepared_tokens": 5784
+    },
+    {
+      "case_id": "m3-holdout-pr-003",
+      "group": "held_out",
+      "pr_number": 1241,
+      "snapshot_id": 20,
+      "snapshot_version": 1,
+      "source_id": "acf4322e-a11b-409d-b526-595f30fb9a69",
+      "source_hash": "3b71a8fec25e0989e2a5bbb09fdd94adcddf38490af90cf0e4f9c20307710338",
+      "prepared_text_hash": "72b1a9c156d72a29ae54f016b80e4a1e9223d099e9c83dbb586764588a7ebd20",
+      "estimated_prepared_tokens": 1293
+    },
+    {
+      "case_id": "m3-holdout-pr-004",
+      "group": "held_out",
+      "pr_number": 1253,
+      "snapshot_id": 21,
+      "snapshot_version": 1,
+      "source_id": "ccc45df7-4d83-4402-be07-97a88ea86141",
+      "source_hash": "e35b002a7b6ba3584d4b423a6af72891db7f68df2f248f7754482b1a2737f6d9",
+      "prepared_text_hash": "b3193c0005fe4e2fcecb40e3aead2b1f1dc3b0f3c2bd1ab687e9f339d89c4784",
+      "estimated_prepared_tokens": 911
+    },
+    {
+      "case_id": "m3-holdout-pr-005",
+      "group": "held_out",
+      "pr_number": 1249,
+      "snapshot_id": 22,
+      "snapshot_version": 1,
+      "source_id": "eb3ba0c0-6071-4f33-8ef3-45c6867dd7b8",
+      "source_hash": "dc039b7fc060691799b4c49ecbb7f3ca94c263004f1ed7022fc2f3dc3c9fc2b8",
+      "prepared_text_hash": "e4da1619c90ec89031c11cc2282e5d4bd361d2853cccfcae7b850903859e45eb",
+      "estimated_prepared_tokens": 1214
+    },
+    {
+      "case_id": "m3-holdout-pr-006",
+      "group": "held_out",
+      "pr_number": 1245,
+      "snapshot_id": 23,
+      "snapshot_version": 1,
+      "source_id": "fb5a165d-ae57-4107-bb96-0f19f1d714c1",
+      "source_hash": "013b14b6b15de1b8a35d58c4153130f3d3c99033982858b2fbe8a68f5a4df505",
+      "prepared_text_hash": "ab41bb4c554ef8a8f0e3f4a52cdb170e176d41198c41dc7edcb60ef55910c24e",
+      "estimated_prepared_tokens": 2101
+    },
+    {
+      "case_id": "m3-holdout-pr-007",
+      "group": "held_out",
+      "pr_number": 1201,
+      "snapshot_id": 24,
+      "snapshot_version": 1,
+      "source_id": "d95527b4-f58c-4072-8ada-294771ef77c2",
+      "source_hash": "7efd8ed141e53f023e33e2de4c2c71cfde826436bc76b0cc81eab12c3835bcfb",
+      "prepared_text_hash": "f4bbcaf0255703077ced2d1870b89935c636f7080132a684e93cafd53692eeb3",
+      "estimated_prepared_tokens": 508
+    },
+    {
+      "case_id": "m3-holdout-pr-008",
+      "group": "held_out",
+      "pr_number": 1260,
+      "snapshot_id": 25,
+      "snapshot_version": 1,
+      "source_id": "162c71e5-ff19-47ab-8a1b-5b37c86860cf",
+      "source_hash": "7ac70698b078e6456e7a620ed9d8425a9fe96c79be50c0496dafb62b80d7cc64",
+      "prepared_text_hash": "8904837134c4c167a4ae047a2a4479f61eeb8fdf0c42e674df260704946ce771",
+      "estimated_prepared_tokens": 592
+    }
+  ]
+}
