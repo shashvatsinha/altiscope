@@ -85,9 +85,15 @@ def save_calls(
             result.usage.cache_write_tokens,
         )
         usage_status = "measured" if any(usage_values) else "unavailable"
+        provider = registry.provider_for(model.id)
+        cache_read_rate = model.cache_read_usd_per_mtok
+        cache_write_rate = model.cache_write_usd_per_mtok
+        if provider.base_url == "https://openrouter.ai/api/v1":
+            cache_read_rate = cache_read_rate or model.input_usd_per_mtok
+            cache_write_rate = cache_write_rate or model.input_usd_per_mtok
         cache_pricing_complete = (
-            result.usage.cache_read_tokens == 0 or model.cache_read_usd_per_mtok is not None
-        ) and (result.usage.cache_write_tokens == 0 or model.cache_write_usd_per_mtok is not None)
+            result.usage.cache_read_tokens == 0 or cache_read_rate is not None
+        ) and (result.usage.cache_write_tokens == 0 or cache_write_rate is not None)
         cost_status = (
             "complete" if usage_status == "measured" and cache_pricing_complete else "unavailable"
         )
@@ -96,8 +102,8 @@ def save_calls(
             cost = (
                 result.usage.input_tokens * model.input_usd_per_mtok
                 + result.usage.output_tokens * model.output_usd_per_mtok
-                + result.usage.cache_read_tokens * (model.cache_read_usd_per_mtok or 0)
-                + result.usage.cache_write_tokens * (model.cache_write_usd_per_mtok or 0)
+                + result.usage.cache_read_tokens * (cache_read_rate or 0)
+                + result.usage.cache_write_tokens * (cache_write_rate or 0)
             ) / 1_000_000
         values = dict(
             stage=decision.stage,
@@ -156,8 +162,15 @@ def save_calls(
                         "currency": "USD",
                         "input_usd_per_mtok": model.input_usd_per_mtok,
                         "output_usd_per_mtok": model.output_usd_per_mtok,
-                        "cache_read_usd_per_mtok": model.cache_read_usd_per_mtok,
-                        "cache_write_usd_per_mtok": model.cache_write_usd_per_mtok,
+                        "cache_read_usd_per_mtok": cache_read_rate,
+                        "cache_write_usd_per_mtok": cache_write_rate,
+                        "cache_rate_fallback": (
+                            provider.base_url == "https://openrouter.ai/api/v1"
+                            and (
+                                model.cache_read_usd_per_mtok is None
+                                or model.cache_write_usd_per_mtok is None
+                            )
+                        ),
                     }
                 ),
                 actual_output_mode=result.output_mode,
@@ -205,13 +218,14 @@ def save_recipe_calls(
             result.usage.cache_write_tokens,
         )
         usage_status = "measured" if any(usage_values) else "unavailable"
+        cache_read_rate = config.pricing.cache_read_usd_per_mtok
+        cache_write_rate = config.pricing.cache_write_usd_per_mtok
+        if config.provider.endpoint == "https://openrouter.ai/api/v1":
+            cache_read_rate = cache_read_rate or config.pricing.input_usd_per_mtok
+            cache_write_rate = cache_write_rate or config.pricing.input_usd_per_mtok
         cache_pricing_complete = (
-            result.usage.cache_read_tokens == 0
-            or config.pricing.cache_read_usd_per_mtok is not None
-        ) and (
-            result.usage.cache_write_tokens == 0
-            or config.pricing.cache_write_usd_per_mtok is not None
-        )
+            result.usage.cache_read_tokens == 0 or cache_read_rate is not None
+        ) and (result.usage.cache_write_tokens == 0 or cache_write_rate is not None)
         cost_status = (
             "complete"
             if (
@@ -223,8 +237,8 @@ def save_recipe_calls(
         )
         cost = None
         if cost_status == "complete":
-            cache_read_rate = config.pricing.cache_read_usd_per_mtok or 0
-            cache_write_rate = config.pricing.cache_write_usd_per_mtok or 0
+            cache_read_rate = cache_read_rate or 0
+            cache_write_rate = cache_write_rate or 0
             cost = (
                 result.usage.input_tokens * config.pricing.input_usd_per_mtok
                 + result.usage.output_tokens * config.pricing.output_usd_per_mtok
@@ -257,7 +271,20 @@ def save_recipe_calls(
                 usage_status=usage_status,
                 cost_usd=cost,
                 cost_status=cost_status,
-                pricing_basis=Jsonb(config.pricing.model_dump(mode="json")),
+                pricing_basis=Jsonb(
+                    {
+                        **config.pricing.model_dump(mode="json"),
+                        "cache_read_usd_per_mtok": cache_read_rate,
+                        "cache_write_usd_per_mtok": cache_write_rate,
+                        "cache_rate_fallback": (
+                            config.provider.endpoint == "https://openrouter.ai/api/v1"
+                            and (
+                                config.pricing.cache_read_usd_per_mtok is None
+                                or config.pricing.cache_write_usd_per_mtok is None
+                            )
+                        ),
+                    }
+                ),
                 latency_ms=result.latency_ms,
                 provider_request_id=result.provider_request_id,
                 stop_reason=result.stop_reason,

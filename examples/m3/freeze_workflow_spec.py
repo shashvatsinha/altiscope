@@ -48,6 +48,7 @@ def main() -> None:
     parser.add_argument("--aggregate-source-id", type=UUID, required=True)
     parser.add_argument("--cap-usd", type=Decimal, required=True)
     parser.add_argument("--operator", required=True)
+    parser.add_argument("--scope", choices=("heldout8", "all20"), default="all20")
     args = parser.parse_args()
     if SPEC_PATH.exists():
         raise ValueError(f"immutable run spec already exists: {SPEC_PATH}")
@@ -157,10 +158,11 @@ def main() -> None:
         "operator": args.operator.strip(),
         "framework": {"package_version": __version__, "git_commit": commit},
         "approved_spend_cap_usd": str(args.cap_usd),
-        "expected_initial_calls": 134,
-        "expected_pr_comparison_members": 80,
+        "scope": args.scope,
+        "expected_initial_calls": 62 if args.scope == "heldout8" else 134,
+        "expected_pr_comparison_members": 32 if args.scope == "heldout8" else 80,
         "expected_aggregate_comparison_members": 4,
-        "expected_assessments_if_all_candidates_succeed": 42,
+        "expected_assessments_if_all_candidates_succeed": 18 if args.scope == "heldout8" else 42,
         "protocol": _artifact(Path("docs/evaluation/m3-protocol-v1.md")),
         "dataset": _artifact(Path("docs/evaluation/m3-eval-set-v1.md")),
         "source_inventory": _artifact(INVENTORY_PATH),

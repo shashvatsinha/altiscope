@@ -41,6 +41,10 @@ AGGREGATE_RECIPES = (
 )
 ASSESSOR = UUID("cd012661-0d58-4d44-bb11-2d406ec26b04")
 HELD_OUT_ORDER = (1259, 1256, 1241, 1253, 1249, 1245, 1201, 1260)
+SCOPES = {
+    "all20": lambda cases: cases,
+    "heldout8": lambda cases: [item for item in cases if item["group"] == "held_out"],
+}
 
 
 def _save(progress: dict[str, Any], path: Path) -> None:
@@ -316,8 +320,9 @@ def _assessment_stage(
     cap: Decimal,
 ) -> None:
     records: dict[str, Any] = progress["assessment"]
-    if len(progress["pr"]) != 20 or not progress["aggregate"]:
-        raise ValueError("finish all PR and aggregate comparisons before assessment stage")
+    expected_cases = int(progress["scope_case_count"])
+    if len(progress["pr"]) != expected_cases or not progress["aggregate"]:
+        raise ValueError("finish all scoped PR and aggregate comparisons before assessment stage")
     comparisons = list(progress["pr"].values())
     if progress["aggregate"]:
         comparisons.append(progress["aggregate"])
@@ -380,11 +385,12 @@ def _assessment_stage(
             )
 
 
-def main() -> None:
+def main() -> None:  # noqa: PLR0912
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--phase", choices=("pr", "upstream", "aggregate", "assess"), required=True)
     parser.add_argument("--cap-usd", type=Decimal, required=True)
     parser.add_argument("--aggregate-source-id", type=UUID)
+    parser.add_argument("--scope", choices=tuple(SCOPES), default="all20")
     parser.add_argument("--progress", type=Path, default=PROGRESS_PATH)
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
@@ -395,7 +401,18 @@ def main() -> None:
     cases: list[dict[str, Any]] = inventory["cases"]
     if len(cases) != 20:
         raise ValueError("source inventory must contain exactly 20 cases")
+    inventory_cases: list[dict[str, Any]] = inventory["cases"]
+    cases = SCOPES[args.scope](inventory_cases)
+    if (
+        args.scope == "heldout8"
+        and tuple(int(item["pr_number"]) for item in cases) != HELD_OUT_ORDER
+    ):
+        raise ValueError("heldout8 scope does not match the frozen aggregate input order")
     progress = _load_progress(args.progress, hashlib.sha256(inventory_bytes).hexdigest())
+    if progress.get("scope") not in (None, args.scope):
+        raise ValueError("progress belongs to a different workflow scope")
+    progress["scope"] = args.scope
+    progress["scope_case_count"] = len(cases)
     with connect(load_settings().database_url) as conn:
         print(
             f"phase {args.phase}; {len(cases)} sources; recorded OpenRouter spend "
@@ -410,6 +427,7 @@ def main() -> None:
             specification = json.loads(SPEC_PATH.read_text())
             if (
                 Decimal(specification["approved_spend_cap_usd"]) != args.cap_usd
+                or specification.get("scope") != args.scope
                 or specification["source_inventory"]["sha256"]
                 != hashlib.sha256(inventory_bytes).hexdigest()
             ):

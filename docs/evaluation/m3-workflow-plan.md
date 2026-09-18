@@ -117,10 +117,10 @@ immutable recipe IDs; it does not resume these.
 
 ## Calls, estimate, and permission gate
 
-The requested scope is eight upstream production PR reports for the aggregate;
-80 PR comparison members; four aggregate comparison members; and 42
-independent assessments of the two explicit candidates on each of 21 cases:
-**134 initial calls**, plus at most one malformed-output repair per request.
+The approved demonstration scope is eight upstream production PR reports for the
+aggregate; 32 PR comparison members; four aggregate comparison members; and 18
+independent assessments of the two explicit candidates on each of nine cases:
+**62 initial calls**, plus at most one malformed-output repair per request.
 No assessment of baselines is planned. A failed or skipped member is reported
 explicitly. Aggregate input report IDs, hashes, rendered text, source ID, and
 upstream costs must be recorded before the aggregate comparison runs.
@@ -131,11 +131,11 @@ at $0.30/M and $2.50/M, and [GPT-5.5](https://openrouter.ai/openai/gpt-5.5/api)
 at $5/M and $30/M. [Sonnet price](https://openrouter.ai/anthropic/claude-sonnet-5/api).
 The 20 prepared PR texts estimate to 58,780 tokens in total before system
 prompts and schemas. Applying the frozen per-request output reservations to
-all 134 planned calls, and allowing a conservative 20,000 input tokens for
+the planned 62 calls, and allowing a conservative 20,000 input tokens for
 the aggregate plus source/output wrapping in assessments, gives an estimated
 **about US$8 for initial calls** and **US$25–30 as a conservative allowance
 for repairs, eight upstream reports, and assessment input wrapping**. The
-revised proposed cap is **US$35**. These are configured-price planning
+approved maximum is **US$12**. These are configured-price planning
 estimates, not a provider bill;
 actual usage, cache pricing, and errors may differ. Check recorded cost after
 each PR and before each aggregate/upstream stage; stop before projected spend
@@ -143,7 +143,8 @@ exceeds the approved cap. The cap is **awaiting owner approval**.
 
 `OPENROUTER_API_KEY` is configured locally in the ignored `.env` and is resolved
 without logging or saving its value. The key was not used in this preparation.
-**Do not start paid calls until the owner confirms the cap.**
+The run completed at **US$1.009516** recorded spend; all 62 calls have complete
+conservative cost records. This is workflow evidence only, not a quality result.
 
 ## Next commands after access and cap are settled
 
@@ -157,14 +158,14 @@ reports come first; the run specification freezes their exact versions before
 any held-out comparison output is displayed:
 
 ```bash
-uv run python examples/m3/run_openrouter_workflow.py --phase upstream --cap-usd 35 --execute
+uv run python examples/m3/run_openrouter_workflow.py --phase upstream --scope heldout8 --cap-usd 12 --execute
 uv run python examples/m3/freeze_openrouter_aggregate.py EIGHT_REPORT_IDS_IN_DATASET_ORDER
 uv run python examples/m3/freeze_workflow_spec.py \
-  --aggregate-source-id AGGREGATE_SOURCE_UUID --cap-usd 35 --operator owner-approved-run
-uv run python examples/m3/run_openrouter_workflow.py --phase pr --cap-usd 35 --execute
+  --aggregate-source-id AGGREGATE_SOURCE_UUID --scope heldout8 --cap-usd 12 --operator owner-approved-run
+uv run python examples/m3/run_openrouter_workflow.py --phase pr --scope heldout8 --cap-usd 12 --execute
 uv run python examples/m3/run_openrouter_workflow.py --phase aggregate \
-  --aggregate-source-id AGGREGATE_SOURCE_UUID --cap-usd 35 --execute
-uv run python examples/m3/run_openrouter_workflow.py --phase assess --cap-usd 35 --execute
+  --aggregate-source-id AGGREGATE_SOURCE_UUID --scope heldout8 --cap-usd 12 --execute
+uv run python examples/m3/run_openrouter_workflow.py --phase assess --scope heldout8 --cap-usd 12 --execute
 ```
 
 Use the eight report IDs recorded by the upstream stage in the held-out order
