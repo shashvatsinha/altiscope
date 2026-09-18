@@ -93,7 +93,7 @@ def test_native_mode_sends_json_schema_and_parses():
     )
     assert result.ok and result.parsed == Out(headline="h", count=3)
     assert result.output_mode == "native"
-    assert result.usage.input_tokens == 11 and result.usage.cache_read_tokens == 4
+    assert result.usage.input_tokens == 7 and result.usage.cache_read_tokens == 4
     assert result.model_id == "served-name"
     req = server.requests[0]
     assert req["model"] == "wire-name"
@@ -235,7 +235,7 @@ def test_native_failures_preserve_usage(content: str, finish: str, stop: str):
     )
     assert result.stop_reason == stop
     assert result.parsed is None
-    assert result.usage.input_tokens == 11
+    assert result.usage.input_tokens == 7
     assert result.usage.output_tokens == 7
     assert result.raw_text == content
 

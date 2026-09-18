@@ -75,12 +75,17 @@ not entries in the live run manifest.
 Offline regression validation on 2026-09-17: `ruff check .`,
 `ruff format --check .`, strict `pyright --pythonpath .venv/bin/python`, and
 `git diff --check` passed. The complete suite in separate Postgres database
-`altiscope_m3_issue50_test` passed **220 tests** with
+`altiscope_m3_issue50_test` passed **221 tests** with
 `ALTISCOPE_DATABASE_URL=... .venv/bin/pytest -o addopts='' -q`.
 `altiscope demo --stage pr_summary` and
 `altiscope demo --stage aggregate --altitude manager` reproduced the M1/M2
 credential-free examples. These checks exercise behavior; they do not evaluate
 real model quality.
+
+The production PR-report path now records measured usage, cache-aware estimated
+cost, pricing basis, and output mode in the same accounting fields as comparison
+recipes. Compatible-provider cached prompt tokens are separated from ordinary
+input tokens. The runner stops if an OpenRouter call lacks complete cost data.
 
 ## Live preparation already saved
 
