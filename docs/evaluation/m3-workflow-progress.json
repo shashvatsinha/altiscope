@@ -1,0 +1,758 @@
+{
+  "aggregate": {
+    "elapsed_ms": 44641,
+    "invocation_id": "1c16b063-25da-4601-b37c-b770ba2689a9",
+    "members": [
+      {
+        "condition": "candidate",
+        "disposition": "generated",
+        "member_id": "8fd5a2fc-06e4-4561-a6cc-b6a119773999",
+        "model_latency_ms": 19377,
+        "new_call_count": 1,
+        "new_cost_status": "complete",
+        "new_cost_usd": "0.03523200",
+        "recipe_id": "b39518cd-7cd7-4045-8fcf-fa98cb9d0c46",
+        "result_id": "b3f8d903-9079-4914-abfd-3e280099585b",
+        "status": "succeeded"
+      },
+      {
+        "condition": "model_comparison",
+        "disposition": "generated",
+        "member_id": "4c8687d8-bf62-41d5-a2d4-5f0324191535",
+        "model_latency_ms": 4746,
+        "new_call_count": 1,
+        "new_cost_status": "complete",
+        "new_cost_usd": "0.00366540",
+        "recipe_id": "b6b568f4-98fd-4a65-b9b0-c2e82c9f17d7",
+        "result_id": "fb72af96-bbcc-47d0-9e44-8691f519a6d7",
+        "status": "succeeded"
+      },
+      {
+        "condition": "primary_baseline",
+        "disposition": "generated",
+        "member_id": "8bc083bd-2d7d-47ea-b457-e1f477a21857",
+        "model_latency_ms": 13270,
+        "new_call_count": 1,
+        "new_cost_status": "complete",
+        "new_cost_usd": "0.03037000",
+        "recipe_id": "58e3c9c6-5a69-43d5-84d2-16f3dfd10b29",
+        "result_id": "8735eaec-652c-4b87-941a-440fa857415d",
+        "status": "succeeded"
+      },
+      {
+        "condition": "primary_baseline",
+        "disposition": "generated",
+        "member_id": "7eb907e2-398e-4414-8f33-415c0347705b",
+        "model_latency_ms": 6175,
+        "new_call_count": 1,
+        "new_cost_status": "complete",
+        "new_cost_usd": "0.00430850",
+        "recipe_id": "dfa7b9f7-4c4f-4a59-90f1-f27050c66616",
+        "result_id": "5c3e936b-8706-47e6-a2dd-6e6ac16b6541",
+        "status": "succeeded"
+      }
+    ],
+    "new_call_count": 4,
+    "new_cost_status": "complete",
+    "new_estimated_cost_usd": "0.07357590",
+    "source_id": "8e5ff6ce-2b18-46cf-aaee-0007ae0e1da2"
+  },
+  "assessment": {
+    "0df21d9f-dc19-4f4a-af98-79e3fc2195ec": {
+      "assessment_id": "b6e22bb7-9cb9-4ad0-bd73-b79de116f203",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.02074500",
+      "model_latency_ms": 4237,
+      "status": "succeeded"
+    },
+    "11cf336f-8224-4965-9fbd-e35faad03482": {
+      "assessment_id": "b1aacbfe-ca58-4273-b1f9-50bf65001c9b",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.01224500",
+      "model_latency_ms": 3631,
+      "status": "succeeded"
+    },
+    "19bb2849-c8fa-472b-8b43-d35ed565e49e": {
+      "assessment_id": "cea455c1-a72c-4a1b-ae40-99bf6127f22f",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.01529000",
+      "model_latency_ms": 3318,
+      "status": "succeeded"
+    },
+    "4a2cb30e-88ef-4ea1-b1b0-645770fe19e1": {
+      "assessment_id": "7ad7b77c-d6aa-4ddb-8104-30bcdc8dd8b1",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.02005000",
+      "model_latency_ms": 3990,
+      "status": "succeeded"
+    },
+    "5907450a-7641-4204-970d-a4fbcae436e1": {
+      "assessment_id": "e7094738-6c26-4610-b375-a2ba97266b1d",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.03749000",
+      "model_latency_ms": 10436,
+      "status": "succeeded"
+    },
+    "6d795d17-fefc-4cbb-92d5-f33c4366ce5c": {
+      "assessment_id": "0a952b37-3361-4149-9aa0-2bae333c5d9d",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.02749500",
+      "model_latency_ms": 6475,
+      "status": "succeeded"
+    },
+    "816341c7-0df5-455f-abf1-867745f30d85": {
+      "assessment_id": "8cc4e380-ea15-44d6-93af-f53f085dc418",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.06245500",
+      "model_latency_ms": 10820,
+      "status": "succeeded"
+    },
+    "8e27d3a2-77fe-4b47-b1f1-40ab316ba54f": {
+      "assessment_id": "5a0371df-15e9-4e17-9d50-09371c526aa6",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.03304500",
+      "model_latency_ms": 7012,
+      "status": "succeeded"
+    },
+    "9651990f-63b5-4fd9-b475-7dbd5dc3bf2c": {
+      "assessment_id": "b20ad1f2-4d39-459b-9f87-3f12db0883bf",
+      "call_count": 1,
+      "cost_status": "unavailable",
+      "estimated_cost_usd": null,
+      "model_latency_ms": 7017,
+      "status": "succeeded"
+    },
+    "a6e3205a-d928-491a-8edc-2c1353bc01da": {
+      "assessment_id": "fd39bbc4-ee18-4dcd-a666-2472b998e798",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.02970500",
+      "model_latency_ms": 7485,
+      "status": "succeeded"
+    },
+    "b3f8d903-9079-4914-abfd-3e280099585b": {
+      "assessment_id": "8fe1777f-5c4b-48ab-9ab2-7446c51a35ec",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.09456000",
+      "model_latency_ms": 7386,
+      "status": "succeeded"
+    },
+    "bc2a12b6-a1f9-4bda-8dfb-fee6e0d1d8cf": {
+      "assessment_id": "6009352c-8037-4974-b5ee-ff2d39491a51",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.04754000",
+      "model_latency_ms": 17317,
+      "status": "succeeded"
+    },
+    "c5692514-6fd9-4eaa-925e-7cd75886b0cd": {
+      "assessment_id": "71cd8388-f956-455d-986e-f219378e521f",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.02155000",
+      "model_latency_ms": 6119,
+      "status": "succeeded"
+    },
+    "e46b4a39-4931-4204-8a46-506252e1fe1f": {
+      "assessment_id": "4a9da44f-9f54-4370-94fd-24a4d35f6b22",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.03765500",
+      "model_latency_ms": 10037,
+      "status": "inconclusive"
+    },
+    "eaec87f7-601f-4aca-bc4d-a67e8e853f91": {
+      "assessment_id": "b5da34b8-ceda-48d6-91c0-e840f87095fb",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.01453500",
+      "model_latency_ms": 3674,
+      "status": "succeeded"
+    },
+    "f5e79ac6-0a9e-4d46-8599-f9215cd24cfe": {
+      "assessment_id": "555f1019-1623-4a39-a46f-cd65602c6ef9",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.05528000",
+      "model_latency_ms": 8069,
+      "status": "succeeded"
+    },
+    "fb72af96-bbcc-47d0-9e44-8691f519a6d7": {
+      "assessment_id": "a813624e-4ff1-4d12-b3ac-235380e2e401",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.09340000",
+      "model_latency_ms": 11078,
+      "status": "succeeded"
+    },
+    "ff9f6b1a-1aab-49fa-b27a-c0731db9cf1a": {
+      "assessment_id": "ddf04302-6b37-4b31-a1da-cb56f91c1a71",
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.01877000",
+      "model_latency_ms": 5230,
+      "status": "succeeded"
+    }
+  },
+  "kind": "m3-openrouter-workflow-progress-v1",
+  "pr": {
+    "m3-holdout-pr-001": {
+      "elapsed_ms": 17087,
+      "invocation_id": "be456267-c6a7-4307-9139-ca1d66bcc854",
+      "members": [
+        {
+          "condition": "candidate",
+          "disposition": "generated",
+          "member_id": "46cf8877-ace9-4588-9b75-951f65bace4e",
+          "model_latency_ms": 8427,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.01225400",
+          "recipe_id": "3c846144-d947-422a-83eb-c2570eeb3df8",
+          "result_id": "e46b4a39-4931-4204-8a46-506252e1fe1f",
+          "status": "succeeded"
+        },
+        {
+          "condition": "model_comparison",
+          "disposition": "generated",
+          "member_id": "57034b51-ef5d-454b-87cc-75674ac42373",
+          "model_latency_ms": 1256,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00113030",
+          "recipe_id": "81841177-eb34-4ae7-b4c2-3ab8e2d8408c",
+          "result_id": "9651990f-63b5-4fd9-b475-7dbd5dc3bf2c",
+          "status": "succeeded"
+        },
+        {
+          "condition": "primary_baseline",
+          "disposition": "generated",
+          "member_id": "bf19f9e6-ccc1-4d63-ba73-d0cc28639df6",
+          "model_latency_ms": 4731,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.01002600",
+          "recipe_id": "0a72212f-bc83-4677-b80c-ef504de2cae5",
+          "result_id": "d914a46d-b405-4455-88aa-699c042d5e27",
+          "status": "succeeded"
+        },
+        {
+          "condition": "primary_baseline",
+          "disposition": "generated",
+          "member_id": "6fecafa8-3d11-492a-b174-bd949faa3b4e",
+          "model_latency_ms": 1276,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00104170",
+          "recipe_id": "e376a655-c879-4815-b769-aabc1a468398",
+          "result_id": "ad187911-e444-46b5-bf3b-39a906cfd31c",
+          "status": "succeeded"
+        }
+      ],
+      "new_call_count": 4,
+      "new_cost_status": "complete",
+      "new_estimated_cost_usd": "0.02445200",
+      "source_id": "7bf2157d-1ab6-4807-bdfb-6ece53ffd16b"
+    },
+    "m3-holdout-pr-002": {
+      "elapsed_ms": 23442,
+      "invocation_id": "6f9c12ec-89f1-4357-9394-0b3261ae973f",
+      "members": [
+        {
+          "condition": "candidate",
+          "disposition": "generated",
+          "member_id": "6ff4b894-09cf-43b5-ac68-f7d90613ba00",
+          "model_latency_ms": 11840,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.02527400",
+          "recipe_id": "3c846144-d947-422a-83eb-c2570eeb3df8",
+          "result_id": "f5e79ac6-0a9e-4d46-8599-f9215cd24cfe",
+          "status": "succeeded"
+        },
+        {
+          "condition": "model_comparison",
+          "disposition": "generated",
+          "member_id": "45e74da5-e4ae-482c-9845-ace0f5c11c27",
+          "model_latency_ms": 2849,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00264870",
+          "recipe_id": "81841177-eb34-4ae7-b4c2-3ab8e2d8408c",
+          "result_id": "816341c7-0df5-455f-abf1-867745f30d85",
+          "status": "succeeded"
+        },
+        {
+          "condition": "primary_baseline",
+          "disposition": "generated",
+          "member_id": "dc5eb7a9-3a85-420d-8323-9c0ed7e38ee4",
+          "model_latency_ms": 7345,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.02077600",
+          "recipe_id": "0a72212f-bc83-4677-b80c-ef504de2cae5",
+          "result_id": "76f322a2-24ac-49f2-9f8b-4f97da08381f",
+          "status": "succeeded"
+        },
+        {
+          "condition": "primary_baseline",
+          "disposition": "generated",
+          "member_id": "f9d7e4b8-65ab-48c7-adbc-347fe60afe9c",
+          "model_latency_ms": 1175,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00192260",
+          "recipe_id": "e376a655-c879-4815-b769-aabc1a468398",
+          "result_id": "de7a20fc-c331-4163-b83c-3c35b3133fb6",
+          "status": "succeeded"
+        }
+      ],
+      "new_call_count": 4,
+      "new_cost_status": "complete",
+      "new_estimated_cost_usd": "0.05062130",
+      "source_id": "48d89fe1-ae9e-455d-a58f-ac4396cdf991"
+    },
+    "m3-holdout-pr-003": {
+      "elapsed_ms": 21384,
+      "invocation_id": "a9d864a3-e3e7-42be-8e8c-b5d13865cdcf",
+      "members": [
+        {
+          "condition": "candidate",
+          "disposition": "generated",
+          "member_id": "38dfaf06-948a-4aae-901a-d9711f52066f",
+          "model_latency_ms": 11810,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.01418800",
+          "recipe_id": "3c846144-d947-422a-83eb-c2570eeb3df8",
+          "result_id": "8e27d3a2-77fe-4b47-b1f1-40ab316ba54f",
+          "status": "succeeded"
+        },
+        {
+          "condition": "model_comparison",
+          "disposition": "generated",
+          "member_id": "b6ab0e77-ce5f-4be3-98f7-d8b0f5ddaabc",
+          "model_latency_ms": 1398,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00070390",
+          "recipe_id": "81841177-eb34-4ae7-b4c2-3ab8e2d8408c",
+          "result_id": "a6e3205a-d928-491a-8edc-2c1353bc01da",
+          "status": "succeeded"
+        },
+        {
+          "condition": "primary_baseline",
+          "disposition": "generated",
+          "member_id": "b7935203-4af4-46e3-bfc0-4b85abbc8ae5",
+          "model_latency_ms": 6764,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00853000",
+          "recipe_id": "0a72212f-bc83-4677-b80c-ef504de2cae5",
+          "result_id": "a2f45252-909b-4a9c-b313-958e1e3e4b2b",
+          "status": "succeeded"
+        },
+        {
+          "condition": "primary_baseline",
+          "disposition": "generated",
+          "member_id": "e689181f-72c4-48c0-94d6-986d13804883",
+          "model_latency_ms": 1183,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00057780",
+          "recipe_id": "e376a655-c879-4815-b769-aabc1a468398",
+          "result_id": "1da149d6-dd1b-4fcb-a18d-4ca18d17d77e",
+          "status": "succeeded"
+        }
+      ],
+      "new_call_count": 4,
+      "new_cost_status": "complete",
+      "new_estimated_cost_usd": "0.02399970",
+      "source_id": "acf4322e-a11b-409d-b526-595f30fb9a69"
+    },
+    "m3-holdout-pr-004": {
+      "elapsed_ms": 13576,
+      "invocation_id": "eacffec6-6fd4-4dec-814d-14c046de8352",
+      "members": [
+        {
+          "condition": "candidate",
+          "disposition": "generated",
+          "member_id": "3a88acc3-91ed-4c12-b7e7-7085e1d99c8e",
+          "model_latency_ms": 5538,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00716000",
+          "recipe_id": "3c846144-d947-422a-83eb-c2570eeb3df8",
+          "result_id": "0df21d9f-dc19-4f4a-af98-79e3fc2195ec",
+          "status": "succeeded"
+        },
+        {
+          "condition": "model_comparison",
+          "disposition": "generated",
+          "member_id": "1b66ca99-eab4-4a54-9eff-9b3a6c310d8f",
+          "model_latency_ms": 1317,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00063950",
+          "recipe_id": "81841177-eb34-4ae7-b4c2-3ab8e2d8408c",
+          "result_id": "c5692514-6fd9-4eaa-925e-7cd75886b0cd",
+          "status": "succeeded"
+        },
+        {
+          "condition": "primary_baseline",
+          "disposition": "generated",
+          "member_id": "329d8925-ff56-45c2-8c19-ed06509b2fdd",
+          "model_latency_ms": 5633,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00652200",
+          "recipe_id": "0a72212f-bc83-4677-b80c-ef504de2cae5",
+          "result_id": "46ba83dd-376a-4eaa-9ab0-830ebabaa2bc",
+          "status": "succeeded"
+        },
+        {
+          "condition": "primary_baseline",
+          "disposition": "generated",
+          "member_id": "5dda6157-1e56-49be-b8e1-546347736f56",
+          "model_latency_ms": 870,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00044590",
+          "recipe_id": "e376a655-c879-4815-b769-aabc1a468398",
+          "result_id": "a99f859d-8543-4ce3-b1e0-ca184b85b197",
+          "status": "succeeded"
+        }
+      ],
+      "new_call_count": 4,
+      "new_cost_status": "complete",
+      "new_estimated_cost_usd": "0.01476740",
+      "source_id": "ccc45df7-4d83-4402-be07-97a88ea86141"
+    },
+    "m3-holdout-pr-005": {
+      "elapsed_ms": 14827,
+      "invocation_id": "10bb1de3-3366-41df-a420-ae3e9b40e8f4",
+      "members": [
+        {
+          "condition": "candidate",
+          "disposition": "generated",
+          "member_id": "de816da0-d76c-4abd-88a5-989d7c5a45e3",
+          "model_latency_ms": 7497,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00909400",
+          "recipe_id": "3c846144-d947-422a-83eb-c2570eeb3df8",
+          "result_id": "bc2a12b6-a1f9-4bda-8dfb-fee6e0d1d8cf",
+          "status": "succeeded"
+        },
+        {
+          "condition": "model_comparison",
+          "disposition": "generated",
+          "member_id": "ec3761da-c2a8-4438-9907-19b6ade34a69",
+          "model_latency_ms": 1468,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00075370",
+          "recipe_id": "81841177-eb34-4ae7-b4c2-3ab8e2d8408c",
+          "result_id": "4a2cb30e-88ef-4ea1-b1b0-645770fe19e1",
+          "status": "succeeded"
+        },
+        {
+          "condition": "primary_baseline",
+          "disposition": "generated",
+          "member_id": "be2eb834-1ff0-4bcb-9c8f-797033daff6a",
+          "model_latency_ms": 4670,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00695600",
+          "recipe_id": "0a72212f-bc83-4677-b80c-ef504de2cae5",
+          "result_id": "4525104e-d233-4efd-8640-1b3405a8adb9",
+          "status": "succeeded"
+        },
+        {
+          "condition": "primary_baseline",
+          "disposition": "generated",
+          "member_id": "a421a145-8040-475b-a3db-cf6a64fb6ca4",
+          "model_latency_ms": 985,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00056510",
+          "recipe_id": "e376a655-c879-4815-b769-aabc1a468398",
+          "result_id": "f3bc7e73-06ac-4502-9d90-ef93eaf27dbb",
+          "status": "succeeded"
+        }
+      ],
+      "new_call_count": 4,
+      "new_cost_status": "complete",
+      "new_estimated_cost_usd": "0.01736880",
+      "source_id": "eb3ba0c0-6071-4f33-8ef3-45c6867dd7b8"
+    },
+    "m3-holdout-pr-006": {
+      "elapsed_ms": 18917,
+      "invocation_id": "a5f7500d-1295-4fce-8bfa-027a0af055ff",
+      "members": [
+        {
+          "condition": "candidate",
+          "disposition": "generated",
+          "member_id": "6274c368-f293-4e9c-9fbc-0d42c70c8cfe",
+          "model_latency_ms": 8515,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.01323200",
+          "recipe_id": "3c846144-d947-422a-83eb-c2570eeb3df8",
+          "result_id": "5907450a-7641-4204-970d-a4fbcae436e1",
+          "status": "succeeded"
+        },
+        {
+          "condition": "model_comparison",
+          "disposition": "generated",
+          "member_id": "90afcafd-bc31-403c-a99f-4c28e11c758b",
+          "model_latency_ms": 2184,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00142680",
+          "recipe_id": "81841177-eb34-4ae7-b4c2-3ab8e2d8408c",
+          "result_id": "6d795d17-fefc-4cbb-92d5-f33c4366ce5c",
+          "status": "succeeded"
+        },
+        {
+          "condition": "primary_baseline",
+          "disposition": "generated",
+          "member_id": "96043bd9-c410-4989-bdbf-6535f3aecad5",
+          "model_latency_ms": 6789,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.01161400",
+          "recipe_id": "0a72212f-bc83-4677-b80c-ef504de2cae5",
+          "result_id": "ba9a4102-c4fe-4ae1-a5e7-17c5d5b7ff36",
+          "status": "succeeded"
+        },
+        {
+          "condition": "primary_baseline",
+          "disposition": "generated",
+          "member_id": "df78d65b-70cc-4630-9dc7-ec8776671dbb",
+          "model_latency_ms": 1207,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00091820",
+          "recipe_id": "e376a655-c879-4815-b769-aabc1a468398",
+          "result_id": "113354a5-40d8-43fe-8dd7-95b6c5cf7a9e",
+          "status": "succeeded"
+        }
+      ],
+      "new_call_count": 4,
+      "new_cost_status": "complete",
+      "new_estimated_cost_usd": "0.02719100",
+      "source_id": "fb5a165d-ae57-4107-bb96-0f19f1d714c1"
+    },
+    "m3-holdout-pr-007": {
+      "elapsed_ms": 8392,
+      "invocation_id": "8bbec7a5-610e-4d43-a3ee-7bd0d11ea5e5",
+      "members": [
+        {
+          "condition": "candidate",
+          "disposition": "generated",
+          "member_id": "9c3af139-fad9-4029-9f9e-bba672e1ed9d",
+          "model_latency_ms": 3471,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00389000",
+          "recipe_id": "3c846144-d947-422a-83eb-c2570eeb3df8",
+          "result_id": "eaec87f7-601f-4aca-bc4d-a67e8e853f91",
+          "status": "succeeded"
+        },
+        {
+          "condition": "model_comparison",
+          "disposition": "generated",
+          "member_id": "ffc9acb8-1a7e-4908-9203-54f7fd18ef62",
+          "model_latency_ms": 882,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00038420",
+          "recipe_id": "81841177-eb34-4ae7-b4c2-3ab8e2d8408c",
+          "result_id": "11cf336f-8224-4965-9fbd-e35faad03482",
+          "status": "succeeded"
+        },
+        {
+          "condition": "primary_baseline",
+          "disposition": "generated",
+          "member_id": "3e465ca1-ae01-407d-897a-4c6d74589c1d",
+          "model_latency_ms": 2923,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00341200",
+          "recipe_id": "0a72212f-bc83-4677-b80c-ef504de2cae5",
+          "result_id": "79e437d3-1d28-44bf-9585-26e7f0f87577",
+          "status": "succeeded"
+        },
+        {
+          "condition": "primary_baseline",
+          "disposition": "generated",
+          "member_id": "1e876497-5025-4712-8298-624f2f10c18d",
+          "model_latency_ms": 904,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00033060",
+          "recipe_id": "e376a655-c879-4815-b769-aabc1a468398",
+          "result_id": "5915441e-9bae-4659-a80d-f7d6027f04ae",
+          "status": "succeeded"
+        }
+      ],
+      "new_call_count": 4,
+      "new_cost_status": "complete",
+      "new_estimated_cost_usd": "0.00801680",
+      "source_id": "d95527b4-f58c-4072-8ada-294771ef77c2"
+    },
+    "m3-holdout-pr-008": {
+      "elapsed_ms": 11331,
+      "invocation_id": "2382a0a4-c70e-4ba4-ade0-95c65bf0cc76",
+      "members": [
+        {
+          "condition": "candidate",
+          "disposition": "generated",
+          "member_id": "346594e6-7c94-443a-b4e2-7ddda9175c2e",
+          "model_latency_ms": 4779,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00488000",
+          "recipe_id": "3c846144-d947-422a-83eb-c2570eeb3df8",
+          "result_id": "ff9f6b1a-1aab-49fa-b27a-c0731db9cf1a",
+          "status": "succeeded"
+        },
+        {
+          "condition": "model_comparison",
+          "disposition": "generated",
+          "member_id": "dec15b75-d075-43f1-ad30-5f78f4b4bd3c",
+          "model_latency_ms": 1190,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00058010",
+          "recipe_id": "81841177-eb34-4ae7-b4c2-3ab8e2d8408c",
+          "result_id": "19bb2849-c8fa-472b-8b43-d35ed565e49e",
+          "status": "succeeded"
+        },
+        {
+          "condition": "primary_baseline",
+          "disposition": "generated",
+          "member_id": "75b33710-6201-4f56-bcc4-bcede28924e8",
+          "model_latency_ms": 4045,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00498200",
+          "recipe_id": "0a72212f-bc83-4677-b80c-ef504de2cae5",
+          "result_id": "45054db6-3116-491c-b4d1-c6dd9932d3b0",
+          "status": "succeeded"
+        },
+        {
+          "condition": "primary_baseline",
+          "disposition": "generated",
+          "member_id": "e3a0778f-4395-464c-b01b-b85a6669af82",
+          "model_latency_ms": 1099,
+          "new_call_count": 1,
+          "new_cost_status": "complete",
+          "new_cost_usd": "0.00051900",
+          "recipe_id": "e376a655-c879-4815-b769-aabc1a468398",
+          "result_id": "a08f0ff8-20a3-4b19-9133-d6cbabd7fbcc",
+          "status": "succeeded"
+        }
+      ],
+      "new_call_count": 4,
+      "new_cost_status": "complete",
+      "new_estimated_cost_usd": "0.01096110",
+      "source_id": "162c71e5-ff19-47ab-8a1b-5b37c86860cf"
+    }
+  },
+  "scope": "heldout8",
+  "scope_case_count": 8,
+  "source_inventory_sha256": "842fb13909cf2e760b12d8fbd2d01c253b10a1e047c0f4526b5e55e254671578",
+  "upstream": {
+    "1201": {
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.00432000",
+      "generation_id": "f8c255f3-7174-48b8-9b2c-bbbc20ccaf63",
+      "model_latency_ms": 3615,
+      "report_id": 10,
+      "snapshot_id": 24,
+      "status": "published"
+    },
+    "1241": {
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.01263800",
+      "generation_id": "f0b8eacc-db70-4614-b578-821cdb7ca108",
+      "model_latency_ms": 10806,
+      "report_id": 6,
+      "snapshot_id": 20,
+      "status": "published"
+    },
+    "1245": {
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.01516200",
+      "generation_id": "d5ccc46b-dca8-48c4-bfc4-f0ef0bf8642d",
+      "model_latency_ms": 10802,
+      "report_id": 9,
+      "snapshot_id": 23,
+      "status": "published"
+    },
+    "1249": {
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.00853400",
+      "generation_id": "dc889452-7b6f-4e87-af22-bd48d4de1c03",
+      "model_latency_ms": 6564,
+      "report_id": 8,
+      "snapshot_id": 22,
+      "status": "published"
+    },
+    "1253": {
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.00805000",
+      "generation_id": "2f4b00ff-2155-4131-b8a0-5db6461335df",
+      "model_latency_ms": 6211,
+      "report_id": 7,
+      "snapshot_id": 21,
+      "status": "published"
+    },
+    "1256": {
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.02451400",
+      "generation_id": "6ce84637-c74f-468a-aa8f-a67620417b52",
+      "model_latency_ms": 10369,
+      "report_id": 5,
+      "snapshot_id": 19,
+      "status": "published"
+    },
+    "1259": {
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.01211400",
+      "generation_id": "c01286f4-00c0-4a99-b0d7-107ab534fd25",
+      "model_latency_ms": 8181,
+      "report_id": 4,
+      "snapshot_id": 18,
+      "status": "published"
+    },
+    "1260": {
+      "call_count": 1,
+      "cost_status": "complete",
+      "estimated_cost_usd": "0.00494000",
+      "generation_id": "2293d425-4194-4560-add7-39cb820dbd53",
+      "model_latency_ms": 3713,
+      "report_id": 11,
+      "snapshot_id": 25,
+      "status": "published"
+    }
+  }
+}
