@@ -77,7 +77,10 @@ Measure three things:
 
 The first study can expose weaknesses. Demonstrating lasting savings requires a team
 using the system over time. M1 and M2 implement PR reports and repository summaries.
-The human evaluation study remains planned work.
+M3's 20-PR operational demonstration exercises the workflow without qualified
+MarkItDown reviewers. The human evaluation study remains planned work and will
+need fresh held-out cases after those outputs are exposed; see
+[ADR-0013](docs/adr/0013-m3-workflow-release-scope.md).
 
 ## Inspiration
 

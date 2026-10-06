@@ -258,4 +258,15 @@ altiscope reviews export REVIEW_SESSION_UUID --output /tmp/m3-offline-review.jso
 ```
 
 The script's synthetic output and any judgment about it are workflow checks only.
-The real selected cases, held-out handling, and human evidence for M3 belong to #50.
+The real-source demonstration and later qualified evaluation are tracked in #50
+and [ADR-0013](adr/0013-m3-workflow-release-scope.md).
+
+For the separate issue #50 demonstration, run
+`uv run python examples/m3/synthetic_study.py` to persist two recipes and their
+prompt-only baselines on both a synthetic PR and a manager aggregate. It also
+persists an independent disagreement assessment and a clearly labeled simulated
+review/export. After ingesting development PR #19, add `--pilot-pr19` to exercise
+the same sequence on a real saved source with hand-authored responses. Neither
+run measures live model quality or qualified human correctness. The
+[workflow plan](evaluation/m3-workflow-plan.md) records the live OpenRouter setup,
+saved IDs, budget gate, and remaining release work.

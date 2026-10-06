@@ -21,6 +21,11 @@ The M3 integration branch also has immutable recipes, frozen comparison sources,
 reproducible comparison execution, prompt-only primary baselines, optional independent
 whole-result assessment, guided exact-result human review, and saved comparison inspection.
 M3 is not a released milestone: the final study and release evidence remain open.
+For this release, the owner chose a bounded real-source workflow demonstration;
+the selected 20-PR qualified quality study is deferred. See
+[ADR-0013](adr/0013-m3-workflow-release-scope.md) and the
+[execution plan](evaluation/m3-workflow-plan.md). This changes the evidence claim,
+not the saved-source, recipe, assessment, or review contracts.
 
 | Workflow | Available now |
 |---|---|
@@ -36,7 +41,8 @@ M3 is not a released milestone: the final study and release evidence remain open
 | Demonstration | Credential-free engineer, manager, executive, and multi-level examples |
 
 The [M1 walkthrough](M1-WALKTHROUGH.md) covers individual PR commands. The
-[M3 recipe guide](M3-RECIPES.md) covers comparisons and assessment. The
+[M3 walkthrough](M3-WALKTHROUGH.md) and [recipe guide](M3-RECIPES.md) cover
+comparisons and assessment. The
 [roadmap](ROADMAP.md) covers later work, including a web interface.
 
 ## 2. From source to report
