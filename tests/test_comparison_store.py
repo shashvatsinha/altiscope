@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from psycopg.types.json import Jsonb
 
 from altiscope.ingest.snapshot import PullRequestSnapshot
 from altiscope.prompts import load_prompt
@@ -437,8 +438,8 @@ def test_legacy_v1_sources_are_filtered_and_new_sources_are_v2(
                     row[1],
                     row[2],
                     version,
-                    psycopg.types.json.Jsonb(row[3]),
-                    psycopg.types.json.Jsonb(legacy_document),
+                    Jsonb(row[3]),
+                    Jsonb(legacy_document),
                     row[4],
                     hash_json([version, str(source_id)]),
                     hash_text(row[4]),
