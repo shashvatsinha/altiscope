@@ -395,3 +395,57 @@ def test_aggregate_source_round_trip_retains_underlying_pr_links(
         loaded = load_source(conn, source.id)
         assert loaded.inputs[0].pr_urls == report_input.pr_urls
         assert loaded.inputs[0].pr_urls == (frozen_snapshot.html_url,)
+
+
+def test_legacy_v1_sources_are_filtered_and_new_sources_are_v2(
+    database: str, snapshot: PullRequestSnapshot
+) -> None:
+    from altiscope.store.comparisons import (
+        LEGACY_PR_SOURCE_FORMAT_VERSION,
+        PR_SOURCE_FORMAT_VERSION,
+    )
+    from altiscope.store.hashing import hash_json, hash_text
+    from tests.test_assessment_service import _freeze_pr  # pyright: ignore[reportPrivateUsage]
+
+    assert PR_SOURCE_FORMAT_VERSION != LEGACY_PR_SOURCE_FORMAT_VERSION
+    with psycopg.connect(database) as conn:
+        fresh, _ = _freeze_pr(conn, snapshot)
+        row = conn.execute(
+            "SELECT source_format_version,repository_id,pull_request_id,preparation_contract,"
+            "prepared_text FROM comparison_sources WHERE id=%s",
+            (fresh.id,),
+        ).fetchone()
+        assert row is not None
+        assert row[0] == PR_SOURCE_FORMAT_VERSION
+        legacy_document = {
+            **fresh.preparation_document,
+            "snapshot": {"raw": "legacy"},
+            "snapshot_source_hash": "legacy-hash",
+        }
+        rows: dict[str, str] = {}
+        for version in (LEGACY_PR_SOURCE_FORMAT_VERSION, PR_SOURCE_FORMAT_VERSION):
+            source_id = uuid4()
+            rows[version] = str(source_id)
+            conn.execute(
+                "INSERT INTO comparison_sources"
+                "(id,kind,stage,repository_id,pull_request_id,source_format_version,"
+                "preparation_contract,preparation_document,prepared_text,content_hash,"
+                "prepared_text_hash,experiment_scope) "
+                "VALUES(%s,'pr','pr_summary',%s,%s,%s,%s,%s,%s,%s,%s,'single_step')",
+                (
+                    source_id,
+                    row[1],
+                    row[2],
+                    version,
+                    psycopg.types.json.Jsonb(row[3]),
+                    psycopg.types.json.Jsonb(legacy_document),
+                    row[4],
+                    hash_json([version, str(source_id)]),
+                    hash_text(row[4]),
+                ),
+            )
+        legacy = load_source(conn, rows[LEGACY_PR_SOURCE_FORMAT_VERSION])
+        assert set(legacy.preparation_document) == {"facts", "manifest"}
+        # The filter is a v1-only compatibility path; other versions are returned as stored.
+        assert "snapshot" in load_source(conn, rows[PR_SOURCE_FORMAT_VERSION]).preparation_document
+        assert legacy.historical_pr_url == fresh.historical_pr_url
