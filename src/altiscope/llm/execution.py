@@ -5,15 +5,19 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
 from altiscope.llm.provider import GenerationResult, Provider
+from altiscope.llm.providers import build_provider
 from altiscope.llm.registry import ModelSpec
 from altiscope.llm.tokens import estimate_tokens
 from altiscope.llm.types import Effort
 from altiscope.llm.validation import sanitize_diagnostic
+
+if TYPE_CHECKING:
+    from altiscope.store.recipes import RecipeVersion
 
 
 @dataclass(frozen=True)
@@ -134,3 +138,10 @@ def execute_structured_request(
             original_user + "\n\nReplace the malformed output once. Errors:\n" + "\n".join(errors)
         )
     return StructuredExecution(None, tuple(attempts), errors)
+
+
+def default_provider(recipe: RecipeVersion) -> Provider:
+    """Build the provider a frozen recipe pins; shared by every recipe-execution service."""
+    registry = recipe.config.to_registry()
+    spec = registry.provider_for(recipe.config.model.registry_key)
+    return build_provider(spec, transport_retry_limit=recipe.config.provider.transport_retry_limit)

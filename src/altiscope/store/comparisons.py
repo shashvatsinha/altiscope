@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, cast
+from decimal import Decimal
+from typing import Any, Literal, cast
 from uuid import UUID, uuid4
 
 import psycopg
@@ -26,6 +27,7 @@ ConditionLabel = Literal["candidate", "primary_baseline", "model_comparison"]
 AssessmentStatus = Literal[
     "succeeded", "preflight_failed", "invalid_output", "refused", "failed", "inconclusive"
 ]
+CostStatus = Literal["not_incurred", "complete", "partial", "unavailable"]
 Attempts = tuple[Attempt, ...] | tuple[AggregateAttempt, ...] | tuple[StructuredAttempt, ...]
 _ERROR_CODES = {
     "oversized_input",
@@ -112,6 +114,14 @@ class StoredResult:
 
 
 @dataclass(frozen=True)
+class CallMeasurements:
+    call_count: int
+    estimated_cost_usd: Decimal | None
+    cost_status: CostStatus
+    model_latency_ms: int | None
+
+
+@dataclass(frozen=True)
 class TerminalAssessment:
     status: AssessmentStatus
     started_at: datetime
@@ -124,6 +134,9 @@ class TerminalAssessment:
     rationale: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    # A completed assessment normally records at least one real model call. A
+    # deterministic verdict made without calling the assessor must say why.
+    zero_attempt_reason: Literal["identity_contradiction"] | None = None
 
 
 @dataclass(frozen=True)
@@ -738,8 +751,12 @@ def save_assessment(
             raise ValueError("inconclusive assessment status requires an inconclusive verdict")
         if terminal.status == "succeeded" and terminal.verdict == "inconclusive":
             raise ValueError("an inconclusive verdict requires inconclusive assessment status")
+        if not attempts and terminal.zero_attempt_reason is None:
+            raise ValueError("completed assessments require at least one real call attempt")
     elif terminal.output is not None or terminal.verdict is not None or not terminal.error_code:
         raise ValueError("failed assessments require an error code and no verdict/output")
+    if attempts and terminal.zero_attempt_reason is not None:
+        raise ValueError("a zero-attempt reason cannot accompany real call attempts")
     assessment_id = uuid4()
     request_identity = uuid4()
     error_code, error_message = _sanitized_error(terminal.error_code, terminal.error_message)
@@ -803,7 +820,25 @@ def save_assessment(
                 "VALUES(%s,'assessment',%s,%s)",
                 (call_id, assessment_id, ordinal),
             )
-    return load_assessment(conn, assessment_id)
+    return StoredAssessment(
+        id=assessment_id,
+        request_identity=request_identity,
+        target_result_id=target_result_id,
+        assessor_recipe_version_id=assessor_recipe_version_id,
+        requesting_invocation_id=requesting_invocation_id,
+        requesting_member_id=requesting_member_id,
+        input_document=terminal.input_document,
+        input_hash=hash_json(terminal.input_document),
+        independence_evidence=terminal.independence_evidence,
+        status=terminal.status,
+        verdict=terminal.verdict,
+        rationale=terminal.rationale,
+        output=output_document,
+        output_hash=output_hash,
+        call_ids=call_ids,
+        error_code=error_code,
+        error_message=error_message,
+    )
 
 
 def validate_assessment_request_context(
@@ -833,21 +868,16 @@ def validate_assessment_request_context(
             )
 
 
-def load_assessment(conn: psycopg.Connection, assessment_id: UUID | str) -> StoredAssessment:
-    """Load one exact assessment, including its retained verdict and ordered real calls."""
-    row = conn.execute(
-        "SELECT id,request_identity,target_result_id,assessor_recipe_version_id,"
-        "requesting_invocation_id,requesting_member_id,input_document,input_hash,"
-        "independence_evidence,status,verdict,rationale,output_document,output_hash,"
-        "error_code,error_message FROM comparison_assessments WHERE id=%s",
-        (UUID(str(assessment_id)),),
-    ).fetchone()
-    if row is None:
-        raise ValueError("assessment not found")
-    calls = conn.execute(
-        "SELECT call_id FROM comparison_assessment_calls WHERE assessment_id=%s ORDER BY ordinal",
-        (UUID(str(assessment_id)),),
-    ).fetchall()
+_ASSESSMENT_COLUMNS = (
+    "a.id,a.request_identity,a.target_result_id,a.assessor_recipe_version_id,"
+    "a.requesting_invocation_id,a.requesting_member_id,a.input_document,a.input_hash,"
+    "a.independence_evidence,a.status,a.verdict,a.rationale,a.output_document,a.output_hash,"
+    "a.error_code,a.error_message,"
+    "array_remove(array_agg(c.call_id ORDER BY c.ordinal),NULL)"
+)
+
+
+def _stored_assessment(row: tuple[Any, ...]) -> StoredAssessment:
     return StoredAssessment(
         id=UUID(str(row[0])),
         request_identity=UUID(str(row[1])),
@@ -863,10 +893,23 @@ def load_assessment(conn: psycopg.Connection, assessment_id: UUID | str) -> Stor
         rationale=str(row[11]) if row[11] is not None else None,
         output=row[12],
         output_hash=str(row[13]) if row[13] is not None else None,
-        call_ids=tuple(int(call[0]) for call in calls),
+        call_ids=tuple(int(call_id) for call_id in row[16]),
         error_code=str(row[14]) if row[14] is not None else None,
         error_message=str(row[15]) if row[15] is not None else None,
     )
+
+
+def load_assessment(conn: psycopg.Connection, assessment_id: UUID | str) -> StoredAssessment:
+    """Load one exact assessment, including its retained verdict and ordered real calls."""
+    row = conn.execute(
+        f"SELECT {_ASSESSMENT_COLUMNS} FROM comparison_assessments a "
+        "LEFT JOIN comparison_assessment_calls c ON c.assessment_id=a.id "
+        "WHERE a.id=%s GROUP BY a.id",
+        (UUID(str(assessment_id)),),
+    ).fetchone()
+    if row is None:
+        raise ValueError("assessment not found")
+    return _stored_assessment(row)
 
 
 def list_assessments(
@@ -874,7 +917,40 @@ def list_assessments(
 ) -> tuple[StoredAssessment, ...]:
     """Return immutable assessment history; absence represents the not-run state."""
     rows = conn.execute(
-        "SELECT id FROM comparison_assessments WHERE target_result_id=%s ORDER BY created_at,id",
+        f"SELECT {_ASSESSMENT_COLUMNS} FROM comparison_assessments a "
+        "LEFT JOIN comparison_assessment_calls c ON c.assessment_id=a.id "
+        "WHERE a.target_result_id=%s GROUP BY a.id ORDER BY a.created_at,a.id",
         (target_result_id,),
     ).fetchall()
-    return tuple(load_assessment(conn, UUID(str(row[0]))) for row in rows)
+    return tuple(_stored_assessment(row) for row in rows)
+
+
+_MEASURE_SQL = (
+    "SELECT count(c.id),sum(c.cost_usd),"
+    "COALESCE(bool_and(c.cost_status='complete'),false),sum(c.latency_ms) "
+    "FROM {table} o JOIN llm_calls c ON c.id=o.call_id WHERE o.{column}=%s"
+)
+_MEASURE_RESULT_SQL = _MEASURE_SQL.format(table="comparison_result_calls", column="result_id")
+_MEASURE_ASSESSMENT_SQL = _MEASURE_SQL.format(
+    table="comparison_assessment_calls", column="assessment_id"
+)
+
+
+def measure_calls(
+    conn: psycopg.Connection, owner: Literal["result", "assessment"], owner_id: UUID
+) -> CallMeasurements:
+    """Count, cost, and latency of the real calls recorded for one result or assessment."""
+    row = conn.execute(
+        _MEASURE_RESULT_SQL if owner == "result" else _MEASURE_ASSESSMENT_SQL, (owner_id,)
+    ).fetchone()
+    assert row is not None
+    count = int(row[0])
+    if count == 0:
+        return CallMeasurements(0, None, "not_incurred", None)
+    complete = bool(row[2])
+    return CallMeasurements(
+        count,
+        Decimal(row[1]) if complete and row[1] is not None else None,
+        "complete" if complete else "unavailable",
+        int(row[3]) if row[3] is not None else None,
+    )

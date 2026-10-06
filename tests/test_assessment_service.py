@@ -683,3 +683,37 @@ def test_oversized_and_provider_preflight_failures_have_zero_attempts(
         assert oversized.assessment.call_ids == ()
         assert incompatible.assessment.error_code == "compatibility"
         assert incompatible.assessment.call_ids == ()
+
+
+def test_completed_assessment_without_real_attempts_requires_an_explicit_reason(
+    database: str, snapshot: PullRequestSnapshot
+):
+    from datetime import UTC, datetime
+
+    from altiscope.store.comparisons import TerminalAssessment, save_assessment
+
+    with psycopg.connect(database) as conn:
+        _, _, target = _pr_target(conn, snapshot)
+        assessor = _assessor(conn)
+        now = datetime.now(UTC)
+        fabricated = TerminalAssessment(
+            "succeeded",
+            now,
+            now,
+            {"format_version": "test"},
+            {},
+            output_schema_version_id=assessor.schema_id,
+            output={"verdict": "agree", "rationale": "No model was called."},
+            verdict="agree",
+            rationale="No model was called.",
+        )
+        with pytest.raises(ValueError, match="at least one real call attempt"):
+            save_assessment(
+                conn,
+                target_result_id=target.id,
+                assessor_recipe_version_id=assessor.id,
+                terminal=fabricated,
+                attempts=(),
+                retention="full",
+            )
+        assert list_assessments(conn, target_result_id=target.id) == ()

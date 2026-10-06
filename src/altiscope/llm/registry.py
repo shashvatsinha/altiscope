@@ -153,3 +153,39 @@ class Registry(BaseModel):
         spec = self.models[model_id]
         usable = math.floor(spec.context_window * self.input_budget_fraction)
         return max(0, usable - self.stages[stage].reserved_output_tokens)
+
+
+def accepted_returned_model_names(
+    *, registry_key: str, wire_name: str, underlying_model_id: str | None
+) -> frozenset[str]:
+    """Names a provider may legitimately report back for a model with this identity."""
+    names = {registry_key, wire_name}
+    if underlying_model_id:
+        names.add(underlying_model_id)
+        identity_parts = underlying_model_id.split("/")
+        if len(identity_parts) > 1:
+            names.add("/".join(identity_parts[1:]))
+            names.add(identity_parts[1])
+    return frozenset(name.strip().casefold() for name in names if name.strip())
+
+
+def contradicting_returned_models(
+    returned_model_ids: tuple[str, ...],
+    *,
+    registry_key: str,
+    wire_name: str,
+    underlying_model_id: str | None,
+) -> tuple[str, ...]:
+    """Returned model ids that are blank or do not match the frozen identity."""
+    accepted = accepted_returned_model_names(
+        registry_key=registry_key, wire_name=wire_name, underlying_model_id=underlying_model_id
+    )
+    return tuple(
+        model_id
+        for model_id in returned_model_ids
+        if not model_id.strip() or model_id.strip().casefold() not in accepted
+    )
+
+
+def same_underlying_model(first: str, second: str) -> bool:
+    return first.casefold() == second.casefold()
