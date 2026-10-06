@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
-from dataclasses import asdict
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass
 from uuid import uuid4
 
 import psycopg
@@ -13,17 +13,90 @@ from pydantic import BaseModel
 
 from altiscope.aggregate.generate import AggregateAttempt
 from altiscope.llm.execution import StructuredAttempt
+from altiscope.llm.provider import Usage
 from altiscope.llm.registry import Registry
 from altiscope.llm.router import RoutingDecision
 from altiscope.llm.tokens import estimate_tokens
 from altiscope.prompts import Prompt
+from altiscope.store.hashing import hash_text
 from altiscope.store.recipes import RecipeVersion
 from altiscope.store.snapshots import insert
 from altiscope.summarize.generate import Attempt
 
+_OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1"
 
-def _digest(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
+
+@dataclass(frozen=True)
+class _Cost:
+    usage_status: str
+    cost_status: str
+    cost_usd: float | None
+    cache_read_rate: float | None
+    cache_write_rate: float | None
+    cache_rate_fallback: bool
+
+
+def _attempt_status(attempt: Attempt | AggregateAttempt | StructuredAttempt) -> str:
+    result = attempt.result
+    if result.stop_reason == "refusal":
+        return "refused"
+    if result.stop_reason in ("transport_error", "max_tokens", "unknown"):
+        return "failed"
+    return "succeeded" if result.ok and not attempt.errors else "invalid_output"
+
+
+def _request_hashes(request: Mapping[str, object], raw_text: str) -> tuple[str, str]:
+    # Plain sort_keys (not canonical_json) is what existing call rows were hashed with.
+    return hash_text(json.dumps(request, sort_keys=True)), hash_text(raw_text)
+
+
+def _measure_cost(
+    usage: Usage,
+    *,
+    input_rate: float,
+    output_rate: float,
+    cache_read_rate: float | None,
+    cache_write_rate: float | None,
+    endpoint: str | None,
+    pricing_trusted: bool = True,
+) -> _Cost:
+    """Shared usage/cost accounting; callers differ only in where rates come from."""
+    declared_cache_rates_missing = cache_read_rate is None or cache_write_rate is None
+    if endpoint == _OPENROUTER_ENDPOINT:
+        cache_read_rate = cache_read_rate or input_rate
+        cache_write_rate = cache_write_rate or input_rate
+    usage_status = (
+        "measured"
+        if any(
+            (
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.cache_read_tokens,
+                usage.cache_write_tokens,
+            )
+        )
+        else "unavailable"
+    )
+    cache_pricing_complete = (usage.cache_read_tokens == 0 or cache_read_rate is not None) and (
+        usage.cache_write_tokens == 0 or cache_write_rate is not None
+    )
+    complete = usage_status == "measured" and pricing_trusted and cache_pricing_complete
+    cost = None
+    if complete:
+        cost = (
+            usage.input_tokens * input_rate
+            + usage.output_tokens * output_rate
+            + usage.cache_read_tokens * (cache_read_rate or 0)
+            + usage.cache_write_tokens * (cache_write_rate or 0)
+        ) / 1_000_000
+    return _Cost(
+        usage_status=usage_status,
+        cost_status="complete" if complete else "unavailable",
+        cost_usd=cost,
+        cache_read_rate=cache_read_rate,
+        cache_write_rate=cache_write_rate,
+        cache_rate_fallback=endpoint == _OPENROUTER_ENDPOINT and declared_cache_rates_missing,
+    )
 
 
 def save_calls(
@@ -72,39 +145,16 @@ def save_calls(
             output_mode=result.output_mode,
             max_tokens=registry.stages[decision.stage].reserved_output_tokens,
         )
-        request_text = json.dumps(request, sort_keys=True)
-        status = "succeeded" if result.ok and not attempt.errors else "invalid_output"
-        if result.stop_reason == "refusal":
-            status = "refused"
-        elif result.stop_reason in ("transport_error", "max_tokens", "unknown"):
-            status = "failed"
-        usage_values = (
-            result.usage.input_tokens,
-            result.usage.output_tokens,
-            result.usage.cache_read_tokens,
-            result.usage.cache_write_tokens,
-        )
-        usage_status = "measured" if any(usage_values) else "unavailable"
         provider = registry.provider_for(model.id)
-        cache_read_rate = model.cache_read_usd_per_mtok
-        cache_write_rate = model.cache_write_usd_per_mtok
-        if provider.base_url == "https://openrouter.ai/api/v1":
-            cache_read_rate = cache_read_rate or model.input_usd_per_mtok
-            cache_write_rate = cache_write_rate or model.input_usd_per_mtok
-        cache_pricing_complete = (
-            result.usage.cache_read_tokens == 0 or cache_read_rate is not None
-        ) and (result.usage.cache_write_tokens == 0 or cache_write_rate is not None)
-        cost_status = (
-            "complete" if usage_status == "measured" and cache_pricing_complete else "unavailable"
+        measured = _measure_cost(
+            result.usage,
+            input_rate=model.input_usd_per_mtok,
+            output_rate=model.output_usd_per_mtok,
+            cache_read_rate=model.cache_read_usd_per_mtok,
+            cache_write_rate=model.cache_write_usd_per_mtok,
+            endpoint=provider.base_url,
         )
-        cost = None
-        if cost_status == "complete":
-            cost = (
-                result.usage.input_tokens * model.input_usd_per_mtok
-                + result.usage.output_tokens * model.output_usd_per_mtok
-                + result.usage.cache_read_tokens * (cache_read_rate or 0)
-                + result.usage.cache_write_tokens * (cache_write_rate or 0)
-            ) / 1_000_000
+        request_hash, response_hash = _request_hashes(request, result.raw_text)
         values = dict(
             stage=decision.stage,
             pull_request_id=snapshot_id,
@@ -123,7 +173,7 @@ def save_calls(
             + estimate_tokens(json.dumps(output_type.model_json_schema(), sort_keys=True))
             + 256,
             **asdict(result.usage),
-            cost_usd=cost
+            cost_usd=measured.cost_usd
             if has_accounting_columns
             else (
                 result.usage.input_tokens * model.input_usd_per_mtok
@@ -133,10 +183,10 @@ def save_calls(
             latency_ms=result.latency_ms,
             provider_request_id=result.provider_request_id,
             stop_reason=result.stop_reason,
-            status=status,
+            status=_attempt_status(attempt),
             error="; ".join(attempt.errors) or None,
-            request_hash=_digest(request_text),
-            response_hash=_digest(result.raw_text),
+            request_hash=request_hash,
+            response_hash=response_hash,
             request_payload=Jsonb(request) if retention == "full" else None,
             response_text=result.raw_text if retention == "full" else None,
             selected_config=Jsonb(
@@ -153,8 +203,8 @@ def save_calls(
         )
         if has_accounting_columns:
             values.update(
-                usage_status=usage_status,
-                cost_status=cost_status,
+                usage_status=measured.usage_status,
+                cost_status=measured.cost_status,
                 pricing_basis=Jsonb(
                     {
                         "provenance": "model_registry",
@@ -162,15 +212,9 @@ def save_calls(
                         "currency": "USD",
                         "input_usd_per_mtok": model.input_usd_per_mtok,
                         "output_usd_per_mtok": model.output_usd_per_mtok,
-                        "cache_read_usd_per_mtok": cache_read_rate,
-                        "cache_write_usd_per_mtok": cache_write_rate,
-                        "cache_rate_fallback": (
-                            provider.base_url == "https://openrouter.ai/api/v1"
-                            and (
-                                model.cache_read_usd_per_mtok is None
-                                or model.cache_write_usd_per_mtok is None
-                            )
-                        ),
+                        "cache_read_usd_per_mtok": measured.cache_read_rate,
+                        "cache_write_usd_per_mtok": measured.cache_write_rate,
+                        "cache_rate_fallback": measured.cache_rate_fallback,
                     }
                 ),
                 actual_output_mode=result.output_mode,
@@ -205,46 +249,23 @@ def save_recipe_calls(
             output_mode=config.model.output_mode,
             max_tokens=config.generation.reserved_output_tokens,
         )
-        request_text = json.dumps(request, sort_keys=True)
-        status = "succeeded" if result.ok and not attempt.errors else "invalid_output"
-        if result.stop_reason == "refusal":
-            status = "refused"
-        elif result.stop_reason in ("transport_error", "max_tokens", "unknown"):
-            status = "failed"
-        usage_values = (
-            result.usage.input_tokens,
-            result.usage.output_tokens,
-            result.usage.cache_read_tokens,
-            result.usage.cache_write_tokens,
+        measured = _measure_cost(
+            result.usage,
+            input_rate=config.pricing.input_usd_per_mtok,
+            output_rate=config.pricing.output_usd_per_mtok,
+            cache_read_rate=config.pricing.cache_read_usd_per_mtok,
+            cache_write_rate=config.pricing.cache_write_usd_per_mtok,
+            endpoint=config.provider.endpoint,
+            pricing_trusted=config.pricing.status == "configured_estimate",
         )
-        usage_status = "measured" if any(usage_values) else "unavailable"
-        cache_read_rate = config.pricing.cache_read_usd_per_mtok
-        cache_write_rate = config.pricing.cache_write_usd_per_mtok
-        if config.provider.endpoint == "https://openrouter.ai/api/v1":
-            cache_read_rate = cache_read_rate or config.pricing.input_usd_per_mtok
-            cache_write_rate = cache_write_rate or config.pricing.input_usd_per_mtok
-        cache_pricing_complete = (
-            result.usage.cache_read_tokens == 0 or cache_read_rate is not None
-        ) and (result.usage.cache_write_tokens == 0 or cache_write_rate is not None)
-        cost_status = (
-            "complete"
-            if (
-                usage_status == "measured"
-                and config.pricing.status == "configured_estimate"
-                and cache_pricing_complete
-            )
-            else "unavailable"
+        # Recorded pricing basis has always shown 0 (not null) for an unset cache rate
+        # once the cost is complete.
+        complete = measured.cost_status == "complete"
+        cache_read_rate = (measured.cache_read_rate or 0) if complete else measured.cache_read_rate
+        cache_write_rate = (
+            (measured.cache_write_rate or 0) if complete else measured.cache_write_rate
         )
-        cost = None
-        if cost_status == "complete":
-            cache_read_rate = cache_read_rate or 0
-            cache_write_rate = cache_write_rate or 0
-            cost = (
-                result.usage.input_tokens * config.pricing.input_usd_per_mtok
-                + result.usage.output_tokens * config.pricing.output_usd_per_mtok
-                + result.usage.cache_read_tokens * cache_read_rate
-                + result.usage.cache_write_tokens * cache_write_rate
-            ) / 1_000_000
+        request_hash, response_hash = _request_hashes(request, result.raw_text)
         call_id = insert(
             conn,
             "llm_calls",
@@ -268,31 +289,25 @@ def save_recipe_calls(
                 )
                 + config.budget.schema_envelope_allowance,
                 **asdict(result.usage),
-                usage_status=usage_status,
-                cost_usd=cost,
-                cost_status=cost_status,
+                usage_status=measured.usage_status,
+                cost_usd=measured.cost_usd,
+                cost_status=measured.cost_status,
                 pricing_basis=Jsonb(
                     {
                         **config.pricing.model_dump(mode="json"),
                         "cache_read_usd_per_mtok": cache_read_rate,
                         "cache_write_usd_per_mtok": cache_write_rate,
-                        "cache_rate_fallback": (
-                            config.provider.endpoint == "https://openrouter.ai/api/v1"
-                            and (
-                                config.pricing.cache_read_usd_per_mtok is None
-                                or config.pricing.cache_write_usd_per_mtok is None
-                            )
-                        ),
+                        "cache_rate_fallback": measured.cache_rate_fallback,
                     }
                 ),
                 latency_ms=result.latency_ms,
                 provider_request_id=result.provider_request_id,
                 stop_reason=result.stop_reason,
                 actual_output_mode=result.output_mode,
-                status=status,
+                status=_attempt_status(attempt),
                 error="; ".join(attempt.errors) or None,
-                request_hash=_digest(request_text),
-                response_hash=_digest(result.raw_text),
+                request_hash=request_hash,
+                response_hash=response_hash,
                 request_payload=Jsonb(request) if retention == "full" else None,
                 response_text=result.raw_text if retention == "full" else None,
                 selected_config=Jsonb(config.model_dump(mode="json")),

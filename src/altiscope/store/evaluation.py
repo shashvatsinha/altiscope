@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
@@ -14,15 +12,11 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from altiscope.assessment.status import assessment_observation_state
+from altiscope.store.hashing import hash_json
 
 ArtifactKind = Literal["protocol", "dataset", "record_contract"]
 UsefulnessStatus = Literal["measured", "unavailable", "not_applicable"]
 EffortComponent = Literal["preparation", "reading", "checking", "correction", "assessment_related"]
-
-
-def _hash_json(value: object) -> str:
-    canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 class EffortMeasure(BaseModel):
@@ -95,7 +89,7 @@ def save_evaluation_artifact(
     """Content-address and retain a protocol, dataset, or record contract."""
     if not external_id.strip() or not version.strip():
         raise ValueError("evaluation artifact identity must not be blank")
-    digest = _hash_json(content)
+    digest = hash_json(content)
     artifact_id = uuid4()
     with conn.transaction():
         row = conn.execute(

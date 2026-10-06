@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -19,6 +17,7 @@ from altiscope.aggregate.inputs import ReportInput
 from altiscope.llm.execution import StructuredAttempt
 from altiscope.store.aggregates import PostgresAggregateStore, load_pr_input
 from altiscope.store.calls import save_recipe_calls
+from altiscope.store.hashing import hash_json, hash_text
 from altiscope.store.recipes import RecipeVersion, load_recipe
 from altiscope.summarize.generate import Attempt
 
@@ -42,18 +41,6 @@ _ERROR_CODES = {
     "source_unavailable",
     "internal_error",
 }
-
-
-def _canonical_json(value: object) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-
-
-def _hash_text(value: str) -> str:
-    return hashlib.sha256(value.encode()).hexdigest()
-
-
-def _hash_json(value: object) -> str:
-    return _hash_text(_canonical_json(value))
 
 
 def _sanitized_error(code: str | None, message: str | None) -> tuple[str | None, str | None]:
@@ -193,8 +180,8 @@ def freeze_pr_source(
             "prepared_text": prepared_text,
             "source_format_version": source_format_version,
         }
-        content_hash = _hash_json(frozen)
-        text_hash = _hash_text(prepared_text)
+        content_hash = hash_json(frozen)
+        text_hash = hash_text(prepared_text)
         conn.execute(
             "INSERT INTO comparison_sources"
             "(id,kind,stage,repository_id,pull_request_id,source_format_version,"
@@ -310,8 +297,8 @@ def freeze_aggregate_source(
             "prepared_text": prepared_text,
             "source_format_version": source_format_version,
         }
-        content_hash = _hash_json(frozen)
-        text_hash = _hash_text(prepared_text)
+        content_hash = hash_json(frozen)
+        text_hash = hash_text(prepared_text)
         conn.execute(
             "INSERT INTO comparison_sources"
             "(id,kind,stage,repository_id,source_format_version,preparation_contract,"
@@ -343,8 +330,8 @@ def freeze_aggregate_source(
                     UUID(item.report_version_id) if item.kind == "aggregate" else None,
                     "pr_summary" if item.kind == "pr" else "aggregate_report",
                     item.text,
-                    _hash_text(item.text),
-                    item.source_hash or _hash_text(item.text),
+                    hash_text(item.text),
+                    item.source_hash or hash_text(item.text),
                     list(item.pr_urls),
                 ),
             )
@@ -531,7 +518,7 @@ def complete_invocation(conn: psycopg.Connection, invocation_id: UUID) -> None:
 
 
 def comparison_cache_key(source: ComparisonSource, recipe: RecipeVersion) -> str:
-    return _hash_json(
+    return hash_json(
         {
             "namespace": "comparison",
             "version": 1,
@@ -601,7 +588,7 @@ def save_result(
         if terminal.output is not None:
             validated = recipe.output_type.model_validate(output_document)
             output_document = validated.model_dump(mode="json")
-        output_hash = _hash_json(output_document) if output_document is not None else None
+        output_hash = hash_json(output_document) if output_document is not None else None
         conn.execute(
             "INSERT INTO comparison_run_results"
             "(id,origin_member_id,source_id,recipe_version_id,output_schema_version_id,"
@@ -774,7 +761,7 @@ def save_assessment(
             output_document = recipe.output_type.model_validate(output_document).model_dump(
                 mode="json"
             )
-        output_hash = _hash_json(output_document) if output_document is not None else None
+        output_hash = hash_json(output_document) if output_document is not None else None
         conn.execute(
             "INSERT INTO comparison_assessments"
             "(id,target_result_id,assessor_recipe_version_id,requesting_invocation_id,"
@@ -790,7 +777,7 @@ def save_assessment(
                 requesting_member_id,
                 request_identity,
                 Jsonb(terminal.input_document),
-                _hash_json(terminal.input_document),
+                hash_json(terminal.input_document),
                 Jsonb(terminal.independence_evidence),
                 terminal.status,
                 terminal.verdict,
