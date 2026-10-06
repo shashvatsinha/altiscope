@@ -20,10 +20,13 @@ component completion alone does not authorize a release.
 3. [Different models, measurable results — #6](https://github.com/shashvatsinha/altiscope/issues/6).
    Versioned recipes, optional independent whole-result assessment, model comparisons,
    and a real-source workflow demonstration with exact results and review history.
-   A MarkItDown quality study needs qualified reviewers and fresh held-out cases
-   after the operational run; see [ADR-0013](adr/0013-m3-workflow-release-scope.md).
+   M3 demonstrates the workflow; it does not claim a qualified MarkItDown quality
+   result. The expert check is deferred to M4, after the UX exists, with qualified
+   reviewers and fresh held-out cases. See [ADR-0013](adr/0013-m3-workflow-release-scope.md).
 4. [A product people can explore — #7](https://github.com/shashvatsinha/altiscope/issues/7).
-   Public hosted UI/API demo with evidence navigation and feedback.
+   Public hosted UI/API demo with evidence navigation and feedback. This milestone
+   also provides the UX needed for the first qualified expert review of generated
+   outputs; that review becomes the M4 quality checkpoint.
 5. [A team's working tool — #8](https://github.com/shashvatsinha/altiscope/issues/8).
    GitHub App, private access, authorization, temporal membership and background work.
 6. [A system that improves through use — #9](https://github.com/shashvatsinha/altiscope/issues/9).
