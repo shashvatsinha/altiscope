@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from altiscope.assessment.status import assessment_observation_state
 from altiscope.store.hashing import hash_json
+from altiscope.store.source_links import historical_repository_locator
 
 ArtifactKind = Literal["protocol", "dataset", "record_contract"]
 UsefulnessStatus = Literal["measured", "unavailable", "not_applicable"]
@@ -517,29 +518,6 @@ def _artifact_export(
     }
 
 
-def _historical_repository_locator(
-    current: str, preparation_document: dict[str, object], snapshot: dict[str, object] | None
-) -> str:
-    if isinstance(snapshot, dict):
-        locator = snapshot.get("repository")
-        if isinstance(locator, str) and locator.strip():
-            return locator
-    inputs = preparation_document.get("inputs")
-    if isinstance(inputs, list):
-        for item in inputs:
-            if not isinstance(item, dict):
-                continue
-            urls = item.get("pr_urls")
-            if not isinstance(urls, list):
-                continue
-            for url in urls:
-                if isinstance(url, str) and url.startswith("https://github.com/"):
-                    parts = url.removeprefix("https://github.com/").split("/")
-                    if len(parts) >= 2:
-                        return "/".join(parts[:2])
-    return current
-
-
 def load_review_record(
     conn: psycopg.Connection, review_session_id: UUID | str
 ) -> dict[str, object]:
@@ -564,7 +542,7 @@ def load_review_record(
     contract = _artifact_export(conn, UUID(str(row[7])))
     assert protocol is not None and contract is not None
     current_locator = f"{row[19]}/{row[20]}"
-    historical_locator = _historical_repository_locator(current_locator, row[22], row[23])
+    historical_locator = historical_repository_locator(current_locator, row[22], row[23])
     preparation_row = conn.execute(
         "SELECT id,effort FROM review_preparations "
         "WHERE source_id=%s AND reviewer_id=%s AND case_id=%s",

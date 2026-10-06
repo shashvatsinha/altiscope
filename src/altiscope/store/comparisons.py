@@ -20,6 +20,7 @@ from altiscope.store.aggregates import PostgresAggregateStore, load_pr_input
 from altiscope.store.calls import save_recipe_calls
 from altiscope.store.hashing import hash_json, hash_text
 from altiscope.store.recipes import RecipeVersion, load_recipe
+from altiscope.store.source_links import snapshot_html_url
 from altiscope.summarize.generate import Attempt
 
 ResultStatus = Literal["succeeded", "preflight_failed", "invalid_output", "refused", "failed"]
@@ -226,7 +227,7 @@ def freeze_pr_source(
         None,
         None,
         (),
-        str(row[1]["html_url"]) if row[1].get("html_url") else None,
+        snapshot_html_url(row[1]),
     )
 
 
@@ -364,10 +365,16 @@ def freeze_aggregate_source(
     )
 
 
+_LEGACY_PREPARATION_KEYS = frozenset({"snapshot", "snapshot_source_hash"})
+
+
 def load_source(conn: psycopg.Connection, source_id: UUID | str) -> ComparisonSource:
     row = conn.execute(
-        "SELECT id,kind,stage,repository_id,pull_request_id,preparation_document,prepared_text,"
-        "content_hash,prepared_text_hash,query,altitude FROM comparison_sources WHERE id=%s",
+        "SELECT s.id,s.kind,s.stage,s.repository_id,s.pull_request_id,s.preparation_document,"
+        "s.prepared_text,s.content_hash,s.prepared_text_hash,s.query,s.altitude,"
+        "p.normalized_snapshot "
+        "FROM comparison_sources s LEFT JOIN pull_requests p ON p.id=s.pull_request_id "
+        "WHERE s.id=%s",
         (UUID(str(source_id)),),
     ).fetchone()
     if row is None:
@@ -392,16 +399,14 @@ def load_source(conn: psycopg.Connection, source_id: UUID | str) -> ComparisonSo
     if row[1] == "pr":
         # Older review workflow rows included a raw snapshot in this JSON. The
         # immutable pull_requests row owns it; keep it out of review/assessment data.
-        preparation_document = {
-            key: value
-            for key, value in preparation_document.items()
-            if key not in ("snapshot", "snapshot_source_hash")
-        }
-        snapshot_row = conn.execute(
-            "SELECT normalized_snapshot FROM pull_requests WHERE id=%s", (row[4],)
-        ).fetchone()
-        if snapshot_row is not None:
-            historical_pr_url = snapshot_row[0].get("html_url")
+        # Retire this once no stored row has either key (see docs/MIGRATIONS.md).
+        if _LEGACY_PREPARATION_KEYS & preparation_document.keys():
+            preparation_document = {
+                key: value
+                for key, value in preparation_document.items()
+                if key not in _LEGACY_PREPARATION_KEYS
+            }
+        historical_pr_url = snapshot_html_url(row[11])
     return ComparisonSource(
         UUID(str(row[0])),
         row[1],
