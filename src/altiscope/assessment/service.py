@@ -6,52 +6,43 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
+from functools import partial
 from typing import Literal
 from uuid import UUID
 
 import psycopg
 
 from altiscope.llm.credentials import api_key
-from altiscope.llm.execution import classify_structured_failure, execute_structured_request
+from altiscope.llm.execution import (
+    classify_structured_failure,
+    default_provider,
+    execute_structured_request,
+)
 from altiscope.llm.provider import Provider
-from altiscope.llm.providers import build_provider
+from altiscope.llm.registry import contradicting_returned_models, same_underlying_model
 from altiscope.schemas.verify import AssessmentOutput, AssessmentVerdict
 from altiscope.store.comparisons import (
     Attempts,
+    CallMeasurements,
     ComparisonSource,
     StoredAssessment,
     StoredResult,
     TerminalAssessment,
     load_result,
     load_source,
+    measure_calls,
     save_assessment,
     validate_assessment_request_context,
 )
 from altiscope.store.recipes import IDENTITY_POLICY_VERSION, RecipeVersion, load_recipe
 
 ProviderFactory = Callable[[RecipeVersion], Provider]
-CostStatus = Literal["not_incurred", "complete", "unavailable"]
-
-
-@dataclass(frozen=True)
-class AssessmentMeasurements:
-    call_count: int
-    estimated_cost_usd: Decimal | None
-    cost_status: CostStatus
-    model_latency_ms: int | None
 
 
 @dataclass(frozen=True)
 class AssessmentRun:
     assessment: StoredAssessment
-    measurements: AssessmentMeasurements
-
-
-def _default_provider(recipe: RecipeVersion) -> Provider:
-    registry = recipe.config.to_registry()
-    spec = registry.provider_for(recipe.config.model.registry_key)
-    return build_provider(spec, transport_retry_limit=recipe.config.provider.transport_retry_limit)
+    measurements: CallMeasurements
 
 
 def _model_evidence(recipe: RecipeVersion) -> dict[str, object]:
@@ -70,26 +61,15 @@ def _model_evidence(recipe: RecipeVersion) -> dict[str, object]:
     }
 
 
-def _accepted_returned_names(recipe: RecipeVersion) -> set[str]:
-    model = recipe.config.model
-    names = {model.registry_key, model.wire_name}
-    if model.underlying_model_id:
-        names.add(model.underlying_model_id)
-        identity_parts = model.underlying_model_id.split("/")
-        if len(identity_parts) > 1:
-            names.add("/".join(identity_parts[1:]))
-            names.add(identity_parts[1])
-    return {name.strip().casefold() for name in names if name.strip()}
-
-
 def _contradicting_returned_models(
     recipe: RecipeVersion, returned_model_ids: tuple[str, ...]
 ) -> tuple[str, ...]:
-    accepted = _accepted_returned_names(recipe)
-    return tuple(
-        model_id
-        for model_id in returned_model_ids
-        if not model_id.strip() or model_id.strip().casefold() not in accepted
+    model = recipe.config.model
+    return contradicting_returned_models(
+        returned_model_ids,
+        registry_key=model.registry_key,
+        wire_name=model.wire_name,
+        underlying_model_id=model.underlying_model_id,
     )
 
 
@@ -158,24 +138,28 @@ def _render_input(document: dict[str, object]) -> str:
     )
 
 
-def _measure(conn: psycopg.Connection, assessment_id: UUID) -> AssessmentMeasurements:
-    row = conn.execute(
-        "SELECT count(c.id),sum(c.cost_usd),"
-        "COALESCE(bool_and(c.cost_status='complete'),false),sum(c.latency_ms) "
-        "FROM comparison_assessment_calls a JOIN llm_calls c ON c.id=a.call_id "
-        "WHERE a.assessment_id=%s",
-        (assessment_id,),
-    ).fetchone()
-    assert row is not None
-    count = int(row[0])
-    if count == 0:
-        return AssessmentMeasurements(0, None, "not_incurred", None)
-    complete = bool(row[2])
-    return AssessmentMeasurements(
-        count,
-        Decimal(row[1]) if complete and row[1] is not None else None,
-        "complete" if complete else "unavailable",
-        int(row[3]) if row[3] is not None else None,
+def _identity_contradiction(
+    subject: Literal["Producer", "Assessor"],
+    assessor: RecipeVersion,
+    started: datetime,
+    input_document: dict[str, object],
+    evidence: dict[str, object],
+    *,
+    zero_attempt_reason: Literal["identity_contradiction"] | None = None,
+) -> TerminalAssessment:
+    rationale = f"{subject} returned-model metadata contradicts its frozen identity evidence."
+    output = AssessmentOutput(verdict=AssessmentVerdict.inconclusive, rationale=rationale)
+    return TerminalAssessment(
+        "inconclusive",
+        started,
+        datetime.now(UTC),
+        input_document,
+        {**evidence, "decision": "inconclusive", "reason": "identity_contradiction"},
+        output_schema_version_id=assessor.schema_id,
+        output=output.model_dump(mode="json"),
+        verdict="inconclusive",
+        rationale=rationale,
+        zero_attempt_reason=zero_attempt_reason,
     )
 
 
@@ -200,19 +184,19 @@ def _persist(
         requesting_invocation_id=requesting_invocation_id,
         requesting_member_id=requesting_member_id,
     )
-    return AssessmentRun(stored, _measure(conn, stored.id))
+    return AssessmentRun(stored, measure_calls(conn, "assessment", stored.id))
 
 
 def _preflight_failure(
     conn: psycopg.Connection,
-    *,
-    target: StoredResult,
-    assessor: RecipeVersion,
-    started: datetime,
     input_document: dict[str, object],
     evidence: dict[str, object],
     error_code: str,
     error_message: str,
+    *,
+    target: StoredResult,
+    assessor: RecipeVersion,
+    started: datetime,
     retention: Literal["full", "hashes_only"],
     requesting_invocation_id: UUID | None,
     requesting_member_id: UUID | None,
@@ -262,6 +246,17 @@ def run_assessment(
     if assessor.stage != "verify":
         raise ValueError("assessor recipe must use the verify stage")
 
+    reject = partial(
+        _preflight_failure,
+        conn,
+        target=target,
+        assessor=assessor,
+        started=started,
+        retention=retention,
+        requesting_invocation_id=requesting_invocation_id,
+        requesting_member_id=requesting_member_id,
+    )
+
     base_evidence: dict[str, object] = {
         "policy_version": IDENTITY_POLICY_VERSION,
         "rule": "known distinct underlying model identities",
@@ -278,53 +273,32 @@ def run_assessment(
             "source_id": str(target.source_id),
             "source_status": "unavailable",
         }
-        return _preflight_failure(
-            conn,
-            target=target,
-            assessor=assessor,
-            started=started,
-            input_document=input_document,
-            evidence={**base_evidence, "decision": "rejected", "reason": "source_unavailable"},
-            error_code="source_unavailable",
-            error_message="exact frozen source material is unavailable",
-            retention=retention,
-            requesting_invocation_id=requesting_invocation_id,
-            requesting_member_id=requesting_member_id,
+        return reject(
+            input_document,
+            {**base_evidence, "decision": "rejected", "reason": "source_unavailable"},
+            "source_unavailable",
+            "exact frozen source material is unavailable",
         )
 
     producer_identity = producer.config.model.underlying_model_id
     assessor_identity = assessor.config.model.underlying_model_id
     if not producer_identity or not assessor_identity:
-        return _preflight_failure(
-            conn,
-            target=target,
-            assessor=assessor,
-            started=started,
-            input_document=input_document,
-            evidence={**base_evidence, "decision": "rejected", "reason": "independence_unknown"},
-            error_code="independence_unknown",
-            error_message="both frozen recipes require known underlying model identities",
-            retention=retention,
-            requesting_invocation_id=requesting_invocation_id,
-            requesting_member_id=requesting_member_id,
+        return reject(
+            input_document,
+            {**base_evidence, "decision": "rejected", "reason": "independence_unknown"},
+            "independence_unknown",
+            "both frozen recipes require known underlying model identities",
         )
-    if producer_identity.casefold() == assessor_identity.casefold():
-        return _preflight_failure(
-            conn,
-            target=target,
-            assessor=assessor,
-            started=started,
-            input_document=input_document,
-            evidence={
+    if same_underlying_model(producer_identity, assessor_identity):
+        return reject(
+            input_document,
+            {
                 **base_evidence,
                 "decision": "rejected",
                 "reason": "same_underlying_model",
             },
-            error_code="same_underlying_model",
-            error_message="producer and assessor resolve to the same underlying model",
-            retention=retention,
-            requesting_invocation_id=requesting_invocation_id,
-            requesting_member_id=requesting_member_id,
+            "same_underlying_model",
+            "producer and assessor resolve to the same underlying model",
         )
 
     target_returned = _target_returned_models(conn, target)
@@ -336,22 +310,17 @@ def run_assessment(
         "producer_returned_model_contradictions": list(target_contradictions),
     }
     if target_contradictions:
-        rationale = "Producer returned-model metadata contradicts its frozen identity evidence."
-        output = AssessmentOutput(verdict=AssessmentVerdict.inconclusive, rationale=rationale)
         return _persist(
             conn,
             target_result_id=target.id,
             assessor=assessor,
-            terminal=TerminalAssessment(
-                "inconclusive",
+            terminal=_identity_contradiction(
+                "Producer",
+                assessor,
                 started,
-                datetime.now(UTC),
                 input_document,
-                {**evidence, "decision": "inconclusive", "reason": "identity_contradiction"},
-                output_schema_version_id=assessor.schema_id,
-                output=output.model_dump(mode="json"),
-                verdict="inconclusive",
-                rationale=rationale,
+                evidence,
+                zero_attempt_reason="identity_contradiction",
             ),
             retention=retention,
             requesting_invocation_id=requesting_invocation_id,
@@ -364,36 +333,19 @@ def run_assessment(
         and credential_reference is not None
         and api_key(credential_reference) is None
     ):
-        return _preflight_failure(
-            conn,
-            target=target,
-            assessor=assessor,
-            started=started,
-            input_document=input_document,
-            evidence=evidence,
-            error_code="credentials",
-            error_message="configured assessor credential is unavailable",
-            retention=retention,
-            requesting_invocation_id=requesting_invocation_id,
-            requesting_member_id=requesting_member_id,
+        return reject(
+            input_document, evidence, "credentials", "configured assessor credential is unavailable"
         )
 
-    factory = provider_factory or _default_provider
+    factory = provider_factory or default_provider
     try:
         provider = factory(assessor)
     except (ValueError, OSError):
-        return _preflight_failure(
-            conn,
-            target=target,
-            assessor=assessor,
-            started=started,
-            input_document=input_document,
-            evidence=evidence,
-            error_code="compatibility",
-            error_message="frozen assessor provider configuration is not executable",
-            retention=retention,
-            requesting_invocation_id=requesting_invocation_id,
-            requesting_member_id=requesting_member_id,
+        return reject(
+            input_document,
+            evidence,
+            "compatibility",
+            "frozen assessor provider configuration is not executable",
         )
 
     config = assessor.config
@@ -418,19 +370,7 @@ def run_assessment(
         "assessor_returned_model_contradictions": list(contradictions),
     }
     if contradictions:
-        rationale = "Assessor returned-model metadata contradicts its frozen identity evidence."
-        output = AssessmentOutput(verdict=AssessmentVerdict.inconclusive, rationale=rationale)
-        terminal = TerminalAssessment(
-            "inconclusive",
-            started,
-            datetime.now(UTC),
-            input_document,
-            {**evidence, "decision": "inconclusive", "reason": "identity_contradiction"},
-            output_schema_version_id=assessor.schema_id,
-            output=output.model_dump(mode="json"),
-            verdict="inconclusive",
-            rationale=rationale,
-        )
+        terminal = _identity_contradiction("Assessor", assessor, started, input_document, evidence)
     elif execution.output is not None:
         output = AssessmentOutput.model_validate(execution.output.model_dump(mode="json"))
         verdict = output.verdict.value

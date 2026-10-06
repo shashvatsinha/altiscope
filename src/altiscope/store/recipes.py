@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +28,7 @@ from altiscope.prompts import Prompt
 from altiscope.schemas.aggregate import AGGREGATE_SCHEMA_VERSION, AggregateOutput
 from altiscope.schemas.pr_summary import PR_SUMMARY_SCHEMA_VERSION, PrReviewOutput
 from altiscope.schemas.verify import ASSESSMENT_SCHEMA_VERSION, AssessmentOutput
+from altiscope.store.hashing import hash_json, hash_text
 
 CONFIGURATION_FORMAT_VERSION = 1
 IDENTITY_POLICY_VERSION = "underlying-model-v1"
@@ -48,14 +47,6 @@ _EFFECTIVE_EFFORT: dict[Effort, Effort] = {
     "xhigh": "high",
     "max": "high",
 }
-
-
-def _canonical_json(value: object) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-
-
-def _hash_json(value: object) -> str:
-    return hashlib.sha256(_canonical_json(value).encode()).hexdigest()
 
 
 class RecipeOverrides(BaseModel):
@@ -382,7 +373,7 @@ def _resolved_config(
         output_contract=FrozenOutputContract(
             contract_id=schema.contract_id,
             version=schema.version,
-            schema_hash=_hash_json(schema_document),
+            schema_hash=hash_json(schema_document),
             validator_version=VALIDATOR_VERSION,
         ),
         pricing=FrozenPricing(
@@ -429,7 +420,7 @@ def _save_prompt(conn: psycopg.Connection, prompt: Prompt) -> int:
 
 def _save_schema(conn: psycopg.Connection, schema: SchemaRegistration) -> UUID:
     document = schema.output_type.model_json_schema()
-    digest = _hash_json(document)
+    digest = hash_json(document)
     schema_id = uuid4()
     row = conn.execute(
         "INSERT INTO output_schema_versions"
@@ -494,7 +485,7 @@ def _insert_recipe(
 ) -> RecipeVersion:
     """Insert one already-resolved immutable recipe configuration."""
     configuration = config.model_dump(mode="json")
-    digest = _hash_json(configuration)
+    digest = hash_json(configuration)
     recipe_id = uuid4()
     with conn.transaction():
         conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (name,))
@@ -584,14 +575,14 @@ def load_recipe(
     ).fetchone()
     if row is None:
         raise ValueError("recipe version not found")
-    if _hash_json(row[6]) != row[7]:
+    if hash_json(row[6]) != row[7]:
         raise ValueError("stored recipe configuration hash mismatch")
     config = FrozenExecutionConfig.model_validate(row[6])
-    if hashlib.sha256(str(row[11]).encode()).hexdigest() != row[9]:
+    if hash_text(str(row[11])) != row[9]:
         raise ValueError("stored recipe prompt hash mismatch")
     if config.prompt_hash != row[9] or config.prompt_version != row[8]:
         raise ValueError("stored recipe prompt identity differs from its frozen configuration")
-    if _hash_json(row[16]) != row[14]:
+    if hash_json(row[16]) != row[14]:
         raise ValueError("stored output schema hash mismatch")
     if config.output_contract.schema_hash != row[14]:
         raise ValueError("stored recipe schema differs from its frozen configuration")

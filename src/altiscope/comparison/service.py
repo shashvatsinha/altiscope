@@ -13,26 +13,31 @@ from uuid import UUID
 import psycopg
 
 from altiscope.llm.credentials import api_key
-from altiscope.llm.execution import classify_structured_failure, execute_structured_request
+from altiscope.llm.execution import (
+    classify_structured_failure,
+    default_provider,
+    execute_structured_request,
+)
 from altiscope.llm.provider import Provider
-from altiscope.llm.providers import build_provider
 from altiscope.store.baselines import is_primary_baseline, load_primary_baseline
 from altiscope.store.comparisons import (
+    CallMeasurements,
     ComparisonInvocation,
     ConditionLabel,
+    CostStatus,
     StoredResult,
     TerminalResult,
     complete_invocation,
     create_invocation,
     find_comparison_result,
     load_source,
+    measure_calls,
     reuse_result,
     save_result,
 )
 from altiscope.store.recipes import RecipeVersion, load_recipe
 
 ProviderFactory = Callable[[RecipeVersion], Provider]
-CostStatus = Literal["not_incurred", "complete", "partial", "unavailable"]
 
 
 @dataclass(frozen=True)
@@ -43,14 +48,6 @@ class PlannedRecipe:
 
 
 @dataclass(frozen=True)
-class MemberMeasurements:
-    call_count: int
-    estimated_cost_usd: Decimal | None
-    cost_status: CostStatus
-    model_latency_ms: int | None
-
-
-@dataclass(frozen=True)
 class MemberOutcome:
     member_id: UUID
     recipe: RecipeVersion
@@ -58,8 +55,8 @@ class MemberOutcome:
     baseline_for_recipe_version_ids: tuple[UUID, ...]
     disposition: Literal["generated", "reused"]
     result: StoredResult
-    current: MemberMeasurements
-    origin: MemberMeasurements
+    current: CallMeasurements
+    origin: CallMeasurements
 
 
 @dataclass(frozen=True)
@@ -90,9 +87,10 @@ def plan_recipes(
     explicit = [load_recipe(conn, recipe_id) for recipe_id in recipe_version_ids]
     ordered = list(explicit)
     baseline_targets: dict[UUID, list[UUID]] = {}
+    is_baseline = {recipe.id: is_primary_baseline(conn, recipe.id) for recipe in explicit}
     if include_primary_baselines:
         for recipe in explicit:
-            if is_primary_baseline(conn, recipe.id):
+            if is_baseline[recipe.id]:
                 continue
             assignment = load_primary_baseline(conn, recipe.id)
             if assignment is None:
@@ -104,11 +102,12 @@ def plan_recipes(
             baseline_targets.setdefault(baseline.id, []).append(recipe.id)
             if all(existing.id != baseline.id for existing in ordered):
                 ordered.append(baseline)
+                is_baseline[baseline.id] = is_primary_baseline(conn, baseline.id)
 
-    reference = next((item for item in explicit if not is_primary_baseline(conn, item.id)), None)
+    reference = next((item for item in explicit if not is_baseline[item.id]), None)
     planned: list[PlannedRecipe] = []
     for recipe in ordered:
-        if is_primary_baseline(conn, recipe.id):
+        if is_baseline[recipe.id]:
             label: ConditionLabel = "primary_baseline"
         elif reference is not None and _model_condition(recipe) != _model_condition(reference):
             label = "model_comparison"
@@ -118,36 +117,9 @@ def plan_recipes(
     return tuple(planned)
 
 
-def _default_provider(recipe: RecipeVersion) -> Provider:
-    registry = recipe.config.to_registry()
-    spec = registry.provider_for(recipe.config.model.registry_key)
-    return build_provider(spec, transport_retry_limit=recipe.config.provider.transport_retry_limit)
-
-
-def _measure_result(conn: psycopg.Connection, result_id: UUID) -> MemberMeasurements:
-    row = conn.execute(
-        "SELECT count(c.id),sum(c.cost_usd),"
-        "COALESCE(bool_and(c.cost_status='complete'),false),sum(c.latency_ms) "
-        "FROM comparison_result_calls r JOIN llm_calls c ON c.id=r.call_id "
-        "WHERE r.result_id=%s",
-        (result_id,),
-    ).fetchone()
-    assert row is not None
-    count = int(row[0])
-    if count == 0:
-        return MemberMeasurements(0, None, "not_incurred", None)
-    complete = bool(row[2])
-    return MemberMeasurements(
-        count,
-        Decimal(row[1]) if complete and row[1] is not None else None,
-        "complete" if complete else "unavailable",
-        int(row[3]) if row[3] is not None else None,
-    )
-
-
 def _current_measurements(
-    conn: psycopg.Connection, member_id: UUID, *, origin: MemberMeasurements
-) -> MemberMeasurements:
+    conn: psycopg.Connection, member_id: UUID, *, origin: CallMeasurements
+) -> CallMeasurements:
     row = conn.execute(
         "SELECT disposition,current_call_count,current_cost_usd,current_cost_status "
         "FROM comparison_members WHERE id=%s",
@@ -156,8 +128,8 @@ def _current_measurements(
     if row is None:
         raise ValueError("comparison member not found")
     if row[0] == "reused":
-        return MemberMeasurements(0, None, "not_incurred", None)
-    return MemberMeasurements(
+        return CallMeasurements(0, None, "not_incurred", None)
+    return CallMeasurements(
         int(row[1]),
         Decimal(row[2]) if row[2] is not None else None,
         row[3],
@@ -213,7 +185,7 @@ def run_comparison(
         },
     )
     outcomes: list[MemberOutcome] = []
-    factory = provider_factory or _default_provider
+    factory = provider_factory or default_provider
     for member, plan in zip(invocation.members, planned, strict=True):
         cached = None
         if not regenerate:
@@ -294,7 +266,7 @@ def run_comparison(
                         conn, member_id=member.id, terminal=terminal, attempts=execution.attempts
                     )
             disposition = "generated"
-        origin = _measure_result(conn, result.id)
+        origin = measure_calls(conn, "result", result.id)
         current = _current_measurements(conn, member.id, origin=origin)
         outcomes.append(
             MemberOutcome(

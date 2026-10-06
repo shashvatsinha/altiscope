@@ -332,3 +332,62 @@ def test_aggregate_inspection_shows_exact_inputs_baseline_and_failure(
         assert "Failure invalid_output" in output
         assert "Assessments: not run" in output
         assert good_output().headline in output
+
+
+def _count_queries(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    seen: list[str] = []
+    original = psycopg.Connection.execute
+
+    def counting(self, query, *args, **kwargs):  # type: ignore[no-untyped-def]
+        seen.append(str(query))
+        return original(self, query, *args, **kwargs)
+
+    monkeypatch.setattr(psycopg.Connection, "execute", counting)
+    return seen
+
+
+def test_assessment_history_is_one_query_and_inspection_adds_none(
+    database: str, snapshot: PullRequestSnapshot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from altiscope.store.comparisons import list_assessments
+
+    with psycopg.connect(database) as conn:
+        _, _, target = _pr_target(conn, snapshot)
+        invocation_row = conn.execute(
+            "SELECT m.invocation_id FROM comparison_run_results r "
+            "JOIN comparison_members m ON m.id=r.origin_member_id WHERE r.id=%s",
+            (target.id,),
+        ).fetchone()
+        assert invocation_row is not None
+        invocation_id = UUID(str(invocation_row[0]))
+
+        members = conn.execute(
+            "SELECT count(*) FROM comparison_members WHERE invocation_id=%s", (invocation_id,)
+        ).fetchone()
+        assert members is not None
+        per_member = int(members[0])  # one assessment-history query per member, nothing more
+
+        def assessments_queries() -> int:
+            return sum("comparison_assessments" in q for q in queries)
+
+        queries = _count_queries(monkeypatch)
+        render_comparison(conn, invocation_id)
+        baseline_with_none = assessments_queries()
+        assert baseline_with_none == per_member
+
+        for _ in range(3):
+            run_assessment(
+                conn,
+                target_result_id=target.id,
+                assessor_recipe_version_id=_assessor(conn).id,
+                retention="full",
+                provider_factory=lambda _: RecordingFixture(
+                    ['{"verdict":"agree","rationale":"Matches the saved source."}']
+                ),
+            )
+        queries.clear()
+        assert len(list_assessments(conn, target_result_id=target.id)) == 3
+        assert len(queries) == 1
+        queries.clear()
+        render_comparison(conn, invocation_id)
+        assert assessments_queries() == per_member  # unchanged by the number of assessments

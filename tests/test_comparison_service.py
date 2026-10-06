@@ -602,7 +602,7 @@ def test_comparison_cli_runs_offline_with_default_baseline(
         built.append(provider)
         return provider
 
-    monkeypatch.setattr("altiscope.comparison.service._default_provider", offline)
+    monkeypatch.setattr("altiscope.comparison.service.default_provider", offline)
     monkeypatch.chdir(REPO_ROOT)
     result = CliRunner().invoke(
         app,

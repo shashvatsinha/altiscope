@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, cast
+from decimal import Decimal
+from typing import Any, Literal, cast
 from uuid import UUID, uuid4
 
 import psycopg
@@ -19,7 +18,9 @@ from altiscope.aggregate.inputs import ReportInput
 from altiscope.llm.execution import StructuredAttempt
 from altiscope.store.aggregates import PostgresAggregateStore, load_pr_input
 from altiscope.store.calls import save_recipe_calls
+from altiscope.store.hashing import hash_json, hash_text
 from altiscope.store.recipes import RecipeVersion, load_recipe
+from altiscope.store.source_links import snapshot_html_url
 from altiscope.summarize.generate import Attempt
 
 ResultStatus = Literal["succeeded", "preflight_failed", "invalid_output", "refused", "failed"]
@@ -27,6 +28,7 @@ ConditionLabel = Literal["candidate", "primary_baseline", "model_comparison"]
 AssessmentStatus = Literal[
     "succeeded", "preflight_failed", "invalid_output", "refused", "failed", "inconclusive"
 ]
+CostStatus = Literal["not_incurred", "complete", "partial", "unavailable"]
 Attempts = tuple[Attempt, ...] | tuple[AggregateAttempt, ...] | tuple[StructuredAttempt, ...]
 _ERROR_CODES = {
     "oversized_input",
@@ -42,18 +44,6 @@ _ERROR_CODES = {
     "source_unavailable",
     "internal_error",
 }
-
-
-def _canonical_json(value: object) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-
-
-def _hash_text(value: str) -> str:
-    return hashlib.sha256(value.encode()).hexdigest()
-
-
-def _hash_json(value: object) -> str:
-    return _hash_text(_canonical_json(value))
 
 
 def _sanitized_error(code: str | None, message: str | None) -> tuple[str | None, str | None]:
@@ -125,6 +115,14 @@ class StoredResult:
 
 
 @dataclass(frozen=True)
+class CallMeasurements:
+    call_count: int
+    estimated_cost_usd: Decimal | None
+    cost_status: CostStatus
+    model_latency_ms: int | None
+
+
+@dataclass(frozen=True)
 class TerminalAssessment:
     status: AssessmentStatus
     started_at: datetime
@@ -137,6 +135,9 @@ class TerminalAssessment:
     rationale: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    # A completed assessment normally records at least one real model call. A
+    # deterministic verdict made without calling the assessor must say why.
+    zero_attempt_reason: Literal["identity_contradiction"] | None = None
 
 
 @dataclass(frozen=True)
@@ -156,8 +157,13 @@ class StoredAssessment:
     output: dict[str, object] | None
     output_hash: str | None
     call_ids: tuple[int, ...]
+    started_at: datetime
+    finished_at: datetime
     error_code: str | None = None
     error_message: str | None = None
+
+
+PR_SOURCE_FORMAT_VERSION = "pr-prepared-v2"
 
 
 def freeze_pr_source(
@@ -167,7 +173,7 @@ def freeze_pr_source(
     preparation_document: dict[str, object],
     prepared_text: str,
     preparation_contract: dict[str, object],
-    source_format_version: str = "pr-prepared-v1",
+    source_format_version: str = PR_SOURCE_FORMAT_VERSION,
 ) -> ComparisonSource:
     """Freeze one exact PR snapshot and its already-computed preparation."""
     if not prepared_text.strip():
@@ -193,8 +199,8 @@ def freeze_pr_source(
             "prepared_text": prepared_text,
             "source_format_version": source_format_version,
         }
-        content_hash = _hash_json(frozen)
-        text_hash = _hash_text(prepared_text)
+        content_hash = hash_json(frozen)
+        text_hash = hash_text(prepared_text)
         conn.execute(
             "INSERT INTO comparison_sources"
             "(id,kind,stage,repository_id,pull_request_id,source_format_version,"
@@ -226,7 +232,7 @@ def freeze_pr_source(
         None,
         None,
         (),
-        str(row[1]["html_url"]) if row[1].get("html_url") else None,
+        snapshot_html_url(row[1]),
     )
 
 
@@ -310,8 +316,8 @@ def freeze_aggregate_source(
             "prepared_text": prepared_text,
             "source_format_version": source_format_version,
         }
-        content_hash = _hash_json(frozen)
-        text_hash = _hash_text(prepared_text)
+        content_hash = hash_json(frozen)
+        text_hash = hash_text(prepared_text)
         conn.execute(
             "INSERT INTO comparison_sources"
             "(id,kind,stage,repository_id,source_format_version,preparation_contract,"
@@ -343,8 +349,8 @@ def freeze_aggregate_source(
                     UUID(item.report_version_id) if item.kind == "aggregate" else None,
                     "pr_summary" if item.kind == "pr" else "aggregate_report",
                     item.text,
-                    _hash_text(item.text),
-                    item.source_hash or _hash_text(item.text),
+                    hash_text(item.text),
+                    item.source_hash or hash_text(item.text),
                     list(item.pr_urls),
                 ),
             )
@@ -364,10 +370,19 @@ def freeze_aggregate_source(
     )
 
 
+# v1 sources could carry a raw snapshot in their preparation document; v2 rejects it at write
+# time, so only v1 rows need the read-side filter.
+LEGACY_PR_SOURCE_FORMAT_VERSION = "pr-prepared-v1"
+_LEGACY_PREPARATION_KEYS = frozenset({"snapshot", "snapshot_source_hash"})
+
+
 def load_source(conn: psycopg.Connection, source_id: UUID | str) -> ComparisonSource:
     row = conn.execute(
-        "SELECT id,kind,stage,repository_id,pull_request_id,preparation_document,prepared_text,"
-        "content_hash,prepared_text_hash,query,altitude FROM comparison_sources WHERE id=%s",
+        "SELECT s.id,s.kind,s.stage,s.repository_id,s.pull_request_id,s.preparation_document,"
+        "s.prepared_text,s.content_hash,s.prepared_text_hash,s.query,s.altitude,"
+        "p.normalized_snapshot,s.source_format_version "
+        "FROM comparison_sources s LEFT JOIN pull_requests p ON p.id=s.pull_request_id "
+        "WHERE s.id=%s",
         (UUID(str(source_id)),),
     ).fetchone()
     if row is None:
@@ -392,16 +407,16 @@ def load_source(conn: psycopg.Connection, source_id: UUID | str) -> ComparisonSo
     if row[1] == "pr":
         # Older review workflow rows included a raw snapshot in this JSON. The
         # immutable pull_requests row owns it; keep it out of review/assessment data.
-        preparation_document = {
-            key: value
-            for key, value in preparation_document.items()
-            if key not in ("snapshot", "snapshot_source_hash")
-        }
-        snapshot_row = conn.execute(
-            "SELECT normalized_snapshot FROM pull_requests WHERE id=%s", (row[4],)
-        ).fetchone()
-        if snapshot_row is not None:
-            historical_pr_url = snapshot_row[0].get("html_url")
+        # Retire this with the last v1 source (see docs/MIGRATIONS.md).
+        if row[12] == LEGACY_PR_SOURCE_FORMAT_VERSION and (
+            _LEGACY_PREPARATION_KEYS & preparation_document.keys()
+        ):
+            preparation_document = {
+                key: value
+                for key, value in preparation_document.items()
+                if key not in _LEGACY_PREPARATION_KEYS
+            }
+        historical_pr_url = snapshot_html_url(row[11])
     return ComparisonSource(
         UUID(str(row[0])),
         row[1],
@@ -531,7 +546,7 @@ def complete_invocation(conn: psycopg.Connection, invocation_id: UUID) -> None:
 
 
 def comparison_cache_key(source: ComparisonSource, recipe: RecipeVersion) -> str:
-    return _hash_json(
+    return hash_json(
         {
             "namespace": "comparison",
             "version": 1,
@@ -601,7 +616,7 @@ def save_result(
         if terminal.output is not None:
             validated = recipe.output_type.model_validate(output_document)
             output_document = validated.model_dump(mode="json")
-        output_hash = _hash_json(output_document) if output_document is not None else None
+        output_hash = hash_json(output_document) if output_document is not None else None
         conn.execute(
             "INSERT INTO comparison_run_results"
             "(id,origin_member_id,source_id,recipe_version_id,output_schema_version_id,"
@@ -751,8 +766,12 @@ def save_assessment(
             raise ValueError("inconclusive assessment status requires an inconclusive verdict")
         if terminal.status == "succeeded" and terminal.verdict == "inconclusive":
             raise ValueError("an inconclusive verdict requires inconclusive assessment status")
+        if not attempts and terminal.zero_attempt_reason is None:
+            raise ValueError("completed assessments require at least one real call attempt")
     elif terminal.output is not None or terminal.verdict is not None or not terminal.error_code:
         raise ValueError("failed assessments require an error code and no verdict/output")
+    if attempts and terminal.zero_attempt_reason is not None:
+        raise ValueError("a zero-attempt reason cannot accompany real call attempts")
     assessment_id = uuid4()
     request_identity = uuid4()
     error_code, error_message = _sanitized_error(terminal.error_code, terminal.error_message)
@@ -774,7 +793,7 @@ def save_assessment(
             output_document = recipe.output_type.model_validate(output_document).model_dump(
                 mode="json"
             )
-        output_hash = _hash_json(output_document) if output_document is not None else None
+        output_hash = hash_json(output_document) if output_document is not None else None
         conn.execute(
             "INSERT INTO comparison_assessments"
             "(id,target_result_id,assessor_recipe_version_id,requesting_invocation_id,"
@@ -790,7 +809,7 @@ def save_assessment(
                 requesting_member_id,
                 request_identity,
                 Jsonb(terminal.input_document),
-                _hash_json(terminal.input_document),
+                hash_json(terminal.input_document),
                 Jsonb(terminal.independence_evidence),
                 terminal.status,
                 terminal.verdict,
@@ -816,7 +835,27 @@ def save_assessment(
                 "VALUES(%s,'assessment',%s,%s)",
                 (call_id, assessment_id, ordinal),
             )
-    return load_assessment(conn, assessment_id)
+    return StoredAssessment(
+        id=assessment_id,
+        request_identity=request_identity,
+        target_result_id=target_result_id,
+        assessor_recipe_version_id=assessor_recipe_version_id,
+        requesting_invocation_id=requesting_invocation_id,
+        requesting_member_id=requesting_member_id,
+        input_document=terminal.input_document,
+        input_hash=hash_json(terminal.input_document),
+        independence_evidence=terminal.independence_evidence,
+        status=terminal.status,
+        verdict=terminal.verdict,
+        rationale=terminal.rationale,
+        output=output_document,
+        output_hash=output_hash,
+        call_ids=call_ids,
+        started_at=terminal.started_at,
+        finished_at=terminal.finished_at,
+        error_code=error_code,
+        error_message=error_message,
+    )
 
 
 def validate_assessment_request_context(
@@ -846,21 +885,16 @@ def validate_assessment_request_context(
             )
 
 
-def load_assessment(conn: psycopg.Connection, assessment_id: UUID | str) -> StoredAssessment:
-    """Load one exact assessment, including its retained verdict and ordered real calls."""
-    row = conn.execute(
-        "SELECT id,request_identity,target_result_id,assessor_recipe_version_id,"
-        "requesting_invocation_id,requesting_member_id,input_document,input_hash,"
-        "independence_evidence,status,verdict,rationale,output_document,output_hash,"
-        "error_code,error_message FROM comparison_assessments WHERE id=%s",
-        (UUID(str(assessment_id)),),
-    ).fetchone()
-    if row is None:
-        raise ValueError("assessment not found")
-    calls = conn.execute(
-        "SELECT call_id FROM comparison_assessment_calls WHERE assessment_id=%s ORDER BY ordinal",
-        (UUID(str(assessment_id)),),
-    ).fetchall()
+_ASSESSMENT_COLUMNS = (
+    "a.id,a.request_identity,a.target_result_id,a.assessor_recipe_version_id,"
+    "a.requesting_invocation_id,a.requesting_member_id,a.input_document,a.input_hash,"
+    "a.independence_evidence,a.status,a.verdict,a.rationale,a.output_document,a.output_hash,"
+    "a.error_code,a.error_message,a.started_at,a.finished_at,"
+    "array_remove(array_agg(c.call_id ORDER BY c.ordinal),NULL)"
+)
+
+
+def _stored_assessment(row: tuple[Any, ...]) -> StoredAssessment:
     return StoredAssessment(
         id=UUID(str(row[0])),
         request_identity=UUID(str(row[1])),
@@ -876,10 +910,25 @@ def load_assessment(conn: psycopg.Connection, assessment_id: UUID | str) -> Stor
         rationale=str(row[11]) if row[11] is not None else None,
         output=row[12],
         output_hash=str(row[13]) if row[13] is not None else None,
-        call_ids=tuple(int(call[0]) for call in calls),
+        call_ids=tuple(int(call_id) for call_id in row[18]),
+        started_at=row[16],
+        finished_at=row[17],
         error_code=str(row[14]) if row[14] is not None else None,
         error_message=str(row[15]) if row[15] is not None else None,
     )
+
+
+def load_assessment(conn: psycopg.Connection, assessment_id: UUID | str) -> StoredAssessment:
+    """Load one exact assessment, including its retained verdict and ordered real calls."""
+    row = conn.execute(
+        f"SELECT {_ASSESSMENT_COLUMNS} FROM comparison_assessments a "
+        "LEFT JOIN comparison_assessment_calls c ON c.assessment_id=a.id "
+        "WHERE a.id=%s GROUP BY a.id",
+        (UUID(str(assessment_id)),),
+    ).fetchone()
+    if row is None:
+        raise ValueError("assessment not found")
+    return _stored_assessment(row)
 
 
 def list_assessments(
@@ -887,7 +936,40 @@ def list_assessments(
 ) -> tuple[StoredAssessment, ...]:
     """Return immutable assessment history; absence represents the not-run state."""
     rows = conn.execute(
-        "SELECT id FROM comparison_assessments WHERE target_result_id=%s ORDER BY created_at,id",
+        f"SELECT {_ASSESSMENT_COLUMNS} FROM comparison_assessments a "
+        "LEFT JOIN comparison_assessment_calls c ON c.assessment_id=a.id "
+        "WHERE a.target_result_id=%s GROUP BY a.id ORDER BY a.created_at,a.id",
         (target_result_id,),
     ).fetchall()
-    return tuple(load_assessment(conn, UUID(str(row[0]))) for row in rows)
+    return tuple(_stored_assessment(row) for row in rows)
+
+
+_MEASURE_SQL = (
+    "SELECT count(c.id),sum(c.cost_usd),"
+    "COALESCE(bool_and(c.cost_status='complete'),false),sum(c.latency_ms) "
+    "FROM {table} o JOIN llm_calls c ON c.id=o.call_id WHERE o.{column}=%s"
+)
+_MEASURE_RESULT_SQL = _MEASURE_SQL.format(table="comparison_result_calls", column="result_id")
+_MEASURE_ASSESSMENT_SQL = _MEASURE_SQL.format(
+    table="comparison_assessment_calls", column="assessment_id"
+)
+
+
+def measure_calls(
+    conn: psycopg.Connection, owner: Literal["result", "assessment"], owner_id: UUID
+) -> CallMeasurements:
+    """Count, cost, and latency of the real calls recorded for one result or assessment."""
+    row = conn.execute(
+        _MEASURE_RESULT_SQL if owner == "result" else _MEASURE_ASSESSMENT_SQL, (owner_id,)
+    ).fetchone()
+    assert row is not None
+    count = int(row[0])
+    if count == 0:
+        return CallMeasurements(0, None, "not_incurred", None)
+    complete = bool(row[2])
+    return CallMeasurements(
+        count,
+        Decimal(row[1]) if complete and row[1] is not None else None,
+        "complete" if complete else "unavailable",
+        int(row[3]) if row[3] is not None else None,
+    )

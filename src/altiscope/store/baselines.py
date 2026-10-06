@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass
 from uuid import UUID
 
 import psycopg
 
 from altiscope.prompts import Prompt
+from altiscope.store.hashing import hash_json
 from altiscope.store.recipes import RecipeVersion, create_recipe_variant, load_recipe
 
 BASELINE_PROMPT_CLASS = "minimal_summary"
@@ -19,16 +18,12 @@ DEFAULT_BASELINE_RATIONALE = (
 )
 
 
-def _canonical_json(value: object) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-
-
 def generation_condition_hash(recipe: RecipeVersion) -> str:
     """Hash every frozen execution field except the prompt identity itself."""
     document = recipe.config.model_dump(mode="json")
     for key in ("prompt_hash", "prompt_version", "prompt_source_path"):
         document.pop(key)
-    return hashlib.sha256(_canonical_json(document).encode()).hexdigest()
+    return hash_json(document)
 
 
 @dataclass(frozen=True)

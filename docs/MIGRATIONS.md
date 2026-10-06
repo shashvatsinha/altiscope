@@ -52,3 +52,16 @@ array for each frozen comparison input and backfills it from saved report lineag
 Migration `0010_comparison_execution_baselines` records immutable minimal-prompt baseline
 recipes, exact candidate-to-baseline assignments, and invocation-member labels/targets
 for later comparison inspection. It does not alter production report caches or history.
+
+## Retiring the legacy PR-source key filter
+
+New PR comparison sources are written as `pr-prepared-v2`, which rejects a raw snapshot in
+the preparation document. `load_source` removes `snapshot` and `snapshot_source_hash` only
+from `pr-prepared-v1` rows. Clean v1 rows are harmless. The filter can be deleted once this
+returns 0 on every deployed database:
+
+```sql
+SELECT count(*) FROM comparison_sources
+WHERE kind = 'pr' AND source_format_version = 'pr-prepared-v1'
+  AND preparation_document ?| array['snapshot', 'snapshot_source_hash'];
+```
