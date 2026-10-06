@@ -313,17 +313,8 @@ def render_comparison(  # noqa: PLR0912, PLR0915
         lines.extend(review_lines)
         assessments = list_assessments(conn, target_result_id=result.id)
         lines.append("  Assessments: " + (str(len(assessments)) if assessments else "not run"))
-        assessment_times_by_id = {
-            UUID(str(row[0])): (row[1], row[2])
-            for row in conn.execute(
-                "SELECT id,started_at,finished_at FROM comparison_assessments "
-                "WHERE target_result_id=%s",
-                (result.id,),
-            ).fetchall()
-        }
         for assessment in assessments:
             assessor = recipe_for(assessment.assessor_recipe_version_id)
-            assessment_times = assessment_times_by_id[assessment.id]
             lines.append(
                 "  " + render_assessment(assessment, reveal=str(assessment.id) in exposed).rstrip()
             )
@@ -345,7 +336,7 @@ def render_comparison(  # noqa: PLR0912, PLR0915
                 f"    assessment calls {assessment_calls}; cost "
                 f"{_money(assessment_cost, assessment_status)}; model latency "
                 + (f"{assessment_latency} ms" if assessment_latency is not None else "unavailable")
-                + f"; elapsed {_duration(assessment_times[0], assessment_times[1])}"
+                + f"; elapsed {_duration(assessment.started_at, assessment.finished_at)}"
             )
             lines.extend(assessment_lines)
             lines.append(f"    assessment repairs {max(0, assessment_calls - 1)}")

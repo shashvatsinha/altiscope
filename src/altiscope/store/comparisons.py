@@ -157,8 +157,13 @@ class StoredAssessment:
     output: dict[str, object] | None
     output_hash: str | None
     call_ids: tuple[int, ...]
+    started_at: datetime
+    finished_at: datetime
     error_code: str | None = None
     error_message: str | None = None
+
+
+PR_SOURCE_FORMAT_VERSION = "pr-prepared-v2"
 
 
 def freeze_pr_source(
@@ -168,7 +173,7 @@ def freeze_pr_source(
     preparation_document: dict[str, object],
     prepared_text: str,
     preparation_contract: dict[str, object],
-    source_format_version: str = "pr-prepared-v1",
+    source_format_version: str = PR_SOURCE_FORMAT_VERSION,
 ) -> ComparisonSource:
     """Freeze one exact PR snapshot and its already-computed preparation."""
     if not prepared_text.strip():
@@ -365,6 +370,9 @@ def freeze_aggregate_source(
     )
 
 
+# v1 sources could carry a raw snapshot in their preparation document; v2 rejects it at write
+# time, so only v1 rows need the read-side filter.
+LEGACY_PR_SOURCE_FORMAT_VERSION = "pr-prepared-v1"
 _LEGACY_PREPARATION_KEYS = frozenset({"snapshot", "snapshot_source_hash"})
 
 
@@ -372,7 +380,7 @@ def load_source(conn: psycopg.Connection, source_id: UUID | str) -> ComparisonSo
     row = conn.execute(
         "SELECT s.id,s.kind,s.stage,s.repository_id,s.pull_request_id,s.preparation_document,"
         "s.prepared_text,s.content_hash,s.prepared_text_hash,s.query,s.altitude,"
-        "p.normalized_snapshot "
+        "p.normalized_snapshot,s.source_format_version "
         "FROM comparison_sources s LEFT JOIN pull_requests p ON p.id=s.pull_request_id "
         "WHERE s.id=%s",
         (UUID(str(source_id)),),
@@ -399,8 +407,10 @@ def load_source(conn: psycopg.Connection, source_id: UUID | str) -> ComparisonSo
     if row[1] == "pr":
         # Older review workflow rows included a raw snapshot in this JSON. The
         # immutable pull_requests row owns it; keep it out of review/assessment data.
-        # Retire this once no stored row has either key (see docs/MIGRATIONS.md).
-        if _LEGACY_PREPARATION_KEYS & preparation_document.keys():
+        # Retire this with the last v1 source (see docs/MIGRATIONS.md).
+        if row[12] == LEGACY_PR_SOURCE_FORMAT_VERSION and (
+            _LEGACY_PREPARATION_KEYS & preparation_document.keys()
+        ):
             preparation_document = {
                 key: value
                 for key, value in preparation_document.items()
@@ -841,6 +851,8 @@ def save_assessment(
         output=output_document,
         output_hash=output_hash,
         call_ids=call_ids,
+        started_at=terminal.started_at,
+        finished_at=terminal.finished_at,
         error_code=error_code,
         error_message=error_message,
     )
@@ -877,7 +889,7 @@ _ASSESSMENT_COLUMNS = (
     "a.id,a.request_identity,a.target_result_id,a.assessor_recipe_version_id,"
     "a.requesting_invocation_id,a.requesting_member_id,a.input_document,a.input_hash,"
     "a.independence_evidence,a.status,a.verdict,a.rationale,a.output_document,a.output_hash,"
-    "a.error_code,a.error_message,"
+    "a.error_code,a.error_message,a.started_at,a.finished_at,"
     "array_remove(array_agg(c.call_id ORDER BY c.ordinal),NULL)"
 )
 
@@ -898,7 +910,9 @@ def _stored_assessment(row: tuple[Any, ...]) -> StoredAssessment:
         rationale=str(row[11]) if row[11] is not None else None,
         output=row[12],
         output_hash=str(row[13]) if row[13] is not None else None,
-        call_ids=tuple(int(call_id) for call_id in row[16]),
+        call_ids=tuple(int(call_id) for call_id in row[18]),
+        started_at=row[16],
+        finished_at=row[17],
         error_code=str(row[14]) if row[14] is not None else None,
         error_message=str(row[15]) if row[15] is not None else None,
     )

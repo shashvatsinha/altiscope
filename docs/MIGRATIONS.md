@@ -55,12 +55,12 @@ for later comparison inspection. It does not alter production report caches or h
 
 ## Retiring the legacy PR-source key filter
 
-`load_source` removes `snapshot` and `snapshot_source_hash` from the preparation document
-of PR comparison sources written before `freeze_pr_source` began rejecting them. The
-filter only runs when a row still has either key. It can be deleted once this returns 0
-on every deployed database:
+New PR comparison sources are written as `pr-prepared-v2`, which rejects a raw snapshot in
+the preparation document. `load_source` removes `snapshot` and `snapshot_source_hash` only
+from `pr-prepared-v1` rows. The filter can be deleted once this returns 0 on every
+deployed database:
 
 ```sql
 SELECT count(*) FROM comparison_sources
-WHERE preparation_document ?| array['snapshot', 'snapshot_source_hash'];
+WHERE kind = 'pr' AND source_format_version = 'pr-prepared-v1';
 ```
