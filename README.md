@@ -73,6 +73,7 @@ and actual assessment exposure without changing generated outputs.
 `altiscope show-comparison INVOCATION_UUID` inspects every saved PR or aggregate
 recipe result, historical inputs, costs, and review status. See the credential-free
 [M3 walkthrough](docs/M3-WALKTHROUGH.md) and [workflow example](examples/m3/README.md).
-M3's release demonstration tests this workflow on the selected 20 PRs. A
-qualified human quality study with fresh held-out cases remains future work;
-see [ADR-0013](docs/adr/0013-m3-workflow-release-scope.md).
+M3's release demonstration tests this workflow on a bounded set of real PRs and
+one manager aggregate. It does not claim a qualified quality result. The first
+qualified expert check is planned for M4, after the UX is available, using fresh
+held-out cases; see [ADR-0013](docs/adr/0013-m3-workflow-release-scope.md).
