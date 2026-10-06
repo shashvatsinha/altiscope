@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import os
+from dataclasses import replace
+from decimal import Decimal
 
 import psycopg
 import pytest
 
 from altiscope.ingest.snapshot import PullRequestSnapshot
+from altiscope.llm.provider import Usage
 from altiscope.llm.registry import Registry
 from altiscope.prompts import latest_prompt
 from altiscope.schemas.pr_summary import PrReviewOutput
@@ -71,6 +74,12 @@ def test_success_repair_failure_and_rerun(database: str, snapshot: PullRequestSn
             (repaired,),
         ).fetchone()
         assert row and row[0] is None and row[1] is None and len(row[2]) == 64
+        accounting = conn.execute(
+            "SELECT usage_status,cost_status,cost_usd FROM llm_calls "
+            "WHERE id=(SELECT llm_call_id FROM pr_summaries WHERE id=%s)",
+            (repaired,),
+        ).fetchone()
+        assert accounting == ("unavailable", "unavailable", None)
         calls = conn.execute(
             "SELECT pull_request_id,attempt_ordinal,generation_id FROM llm_calls "
             "WHERE pull_request_id=%s ORDER BY id",
@@ -111,3 +120,37 @@ def test_success_repair_failure_and_rerun(database: str, snapshot: PullRequestSn
         assert restored.facts == saved_context.facts
         assert restored.manifest == saved_context.manifest
         assert restored.snapshot == snapshot
+
+
+def test_production_report_records_measured_cache_cost(
+    database: str, snapshot: PullRequestSnapshot
+) -> None:
+    snapshot, repo_id = unique_snapshot(snapshot)
+    registry = Registry.load(REPO_ROOT / "config/models.yaml")
+    prompt = latest_prompt(REPO_ROOT / "prompts", "pr_summary")
+
+    class MeteredFixture(FixtureProvider):
+        def generate_structured(self, **kwargs):  # type: ignore[no-untyped-def]
+            result = super().generate_structured(**kwargs)
+            return replace(result, usage=Usage(100, 20, 10, 5), latency_ms=7)
+
+    with psycopg.connect(database) as conn:
+        stored = save_snapshot(conn, snapshot, repository_id=repo_id, default_branch="main", raw={})
+        report_id = summarize(
+            conn,
+            stored,
+            registry=registry,
+            prompt=prompt,
+            retention="full",
+            provider=MeteredFixture(['{"review":"run() now uses a lock."}']),
+        )
+        row = conn.execute(
+            "SELECT c.usage_status,c.cost_status,c.cost_usd,c.pricing_basis,c.actual_output_mode "
+            "FROM pr_summaries s JOIN llm_calls c ON c.id=s.llm_call_id WHERE s.id=%s",
+            (report_id,),
+        ).fetchone()
+        assert row is not None
+        assert row[:3] == ("measured", "complete", Decimal("0.00041450"))
+        assert row[3]["cache_read_usd_per_mtok"] == 0.2
+        assert row[3]["cache_write_usd_per_mtok"] == 2.5
+        assert row[4] == "native"

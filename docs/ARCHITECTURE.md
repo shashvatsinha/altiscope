@@ -11,11 +11,21 @@ The model writes the explanation. The application records which reports it read.
 
 ## 1. Implementation status
 
-**M1 implements the single-PR workflow. M2 now implements repository summaries.**
+**M1 implements the single-PR workflow. M2 implements repository summaries.**
 M2 includes the migration, repository identity, and validation diagnostic fixes from
 PRs #35, #36, and #37. The owner accepted the engineer and manager samples for
 inclusion on 2026-09-10. See the [M2 walkthrough](M2-WALKTHROUGH.md) and
 [release evidence](releases/m2.md).
+
+The M3 integration branch also has immutable recipes, frozen comparison sources,
+reproducible comparison execution, prompt-only primary baselines, optional independent
+whole-result assessment, guided exact-result human review, and saved comparison inspection.
+M3 is not a released milestone: the final study and release evidence remain open.
+For this release, the owner chose a bounded real-source workflow demonstration;
+the selected 20-PR qualified quality study is deferred. See
+[ADR-0013](adr/0013-m3-workflow-release-scope.md) and the
+[execution plan](evaluation/m3-workflow-plan.md). This changes the evidence claim,
+not the saved-source, recipe, assessment, or review contracts.
 
 | Workflow | Available now |
 |---|---|
@@ -24,10 +34,16 @@ inclusion on 2026-09-10. See the [M2 walkthrough](M2-WALKTHROUGH.md) and
 | Combined reports | Route and execute single- or multi-level summaries, with cached results |
 | Inspection | CLI drill-down through exact input versions to PR reports and GitHub links |
 | History | Shared prompt/model-call records, with new versions created on request |
+| Experimental comparisons | Run exact recipe versions on one frozen PR or aggregate source, with isolated cache/history and default prompt-only baselines |
+| Independent assessment | Assess one exact successful comparison result against its exact saved source with a distinct frozen underlying model |
+| Human review | Inspect one exact result with its frozen source; retain usefulness, effort, initial and revised judgments, and ordered assessment exposure |
+| Comparison inspection | Show each saved PR or aggregate result, historical inputs, baseline labels, original and new costs, assessment status, and human review without exposing an unrecorded assessor verdict |
 | Demonstration | Credential-free engineer, manager, executive, and multi-level examples |
 
 The [M1 walkthrough](M1-WALKTHROUGH.md) covers individual PR commands. The
-[roadmap](ROADMAP.md) covers later work, including a web interface and model evaluation.
+[M3 walkthrough](M3-WALKTHROUGH.md) and [recipe guide](M3-RECIPES.md) cover
+comparisons and assessment. The
+[roadmap](ROADMAP.md) covers later work, including a web interface.
 
 ## 2. From source to report
 
@@ -102,9 +118,10 @@ including under `hashes_only` retention. Repair requests still pass the complete
 request budget check before being sent.
 
 These checks do not establish accuracy. Readers can inspect the underlying material,
-and the CLI currently labels interpretation as unverified. Prompts ask the model to
-describe work without judging people. Optional independent review and evaluation
-remain later work.
+and production reports remain labeled as unverified. Prompts ask the model to describe
+work without judging people. On the M3 integration branch, an optional independently
+pinned model can assess a whole comparison result against the same exact saved material;
+that agreement or disagreement is evidence for human review, not factual certainty.
 
 ## 5. Answering a reader's question
 
@@ -177,7 +194,12 @@ jobs and recovery from a process crash are also future work.
 Automated tests check collection, report formatting, retry limits, provider failures,
 and storage history. The checked-in demo uses a synthetic source and hand-authored
 response. These checks exercise the software; usefulness and accuracy need human
-review of real generated reports. The planned 20-PR study belongs to M3.
+review of real generated reports. M3's versioned
+[evaluation protocol](evaluation/m3-protocol-v1.md) and
+[selected 20-PR set](evaluation/m3-eval-set-v1.md) define that future review without
+claiming it has run. The guided CLI persists the protocol's complete review records and
+conceals assessment output until an initial judgment is committed. Final source/recipe
+freeze, generation, real judgments, and reporting remain issue #50's work.
 
 ## 10. Open questions
 
@@ -187,8 +209,8 @@ new PR reports. `--local-only` explicitly uses saved snapshots and does not prom
 remote completeness or freshness. GitHub does not provide a simultaneous read of an
 entire repository, so edits during collection remain an operational limitation.
 
-Later work includes report comparison and manual version selection, optional model
-assessment, feedback, private access, operational retention settings, and the web
+Later work includes rich comparison inspection, manual production input-version
+selection, feedback, private access, operational retention settings, and the web
 interface. The current decisions do not settle those product details.
 
 ## 11. M2 execution and storage
@@ -223,6 +245,32 @@ versions are kept. This is synchronous execution, not a durable background job s
 `show-report ID` opens an exact historical PR report. Both support `--verbose` for
 generation details. The aggregate view lists all underlying GitHub PR links and their
 code-computed count. It does not ask the model to choose links or calculate coverage.
+
+## 12. M3 comparison execution and baselines
+
+A comparison source freezes either one prepared PR snapshot or one ordered set of exact
+saved reports plus its query, altitude, and fully rendered single-step aggregate input.
+Every member receives that same saved text. Execution does not collect sources, select
+newer reports, truncate inputs, or build an aggregate tree.
+
+Each invocation records at least two explicit recipe versions and expands their assigned
+primary baselines before freezing membership. A baseline is a prompt-only recipe variant:
+the model, endpoint, output schema, generation settings, input budget, pricing basis,
+and implementation versions remain identical. Shared and explicitly listed baselines
+are deduplicated. Member metadata distinguishes candidates, primary baselines, and
+model-changing comparisons for later inspection.
+
+The engine constructs one provider from each frozen recipe, disables hidden SDK transport
+retries, and permits only the recorded malformed-output replacement. It saves all actual
+attempts and parsed output. Preflight failures have no invented calls, and one failed
+member does not erase successful siblings. Only successful comparison results can be
+reused; `--regenerate` creates new immutable results.
+
+Comparison cache keys and tables are separate from production reports. A cache hit has
+zero current calls and cost while retaining its origin calls, configured-price estimate,
+latency, and payload-retention limitation. Comparison writes never update production
+current reports. See [M3 recipes and comparison execution](M3-RECIPES.md) and
+[ADR-0012](adr/0012-recipes-and-comparison-runs.md).
 
 The credential-free demo uses this same engine with an in-memory store; `--persist`
 uses Postgres. Human sample review and milestone release integration remain separate

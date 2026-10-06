@@ -1,0 +1,158 @@
+{
+  "contract_version": "m3-review-record-v1",
+  "evaluation_id": "eval-example-001",
+  "review_session_id": "session-example-001",
+  "result_id": "comparison-result-example-001",
+  "reviewer_id": "reviewer-t1",
+  "protocol": {
+    "id": "m3-evaluation-v1",
+    "sha256": "example-protocol-sha256",
+    "content_retained": true
+  },
+  "dataset": {
+    "id": "m3-markitdown-20-v1",
+    "sha256": "example-dataset-sha256",
+    "content_retained": true
+  },
+  "case": {
+    "id": "m3-dev-pr-001",
+    "kind": "pr",
+    "group": "development",
+    "repository_id": 888092115,
+    "repository_locator_at_selection": "microsoft/markitdown",
+    "pull_request_number": 19,
+    "comparison_source_id": "comparison-source-example-001"
+  },
+  "reader_role": "ic",
+  "familiarity": {
+    "level": "domain",
+    "basis": "Python document-conversion experience plus recorded case preparation"
+  },
+  "declared_prior_assessment_exposure": "none_declared",
+  "result_presentation_ordinal": 1,
+  "preparation": {
+    "preparation_record_id": "prep-example-001",
+    "frozen_source_id": "comparison-source-example-001",
+    "effort": {
+      "component": "preparation",
+      "unit": "milliseconds",
+      "status": "measured",
+      "value": 182000,
+      "method": "timer",
+      "unavailable_reason": null
+    }
+  },
+  "exposures": [
+    {
+      "exposure_id": "exposure-example-001",
+      "ordinal": 1,
+      "assessment_id": "assessment-example-001",
+      "kind": "guided_reveal",
+      "presentation_ordinal": 1,
+      "occurred_at": "2026-09-13T18:10:00Z"
+    }
+  ],
+  "revisions": [
+    {
+      "revision_id": "revision-example-001",
+      "ordinal": 1,
+      "previous_revision_id": null,
+      "kind": "initial_blind",
+      "blind_status": "confirmed_unexposed",
+      "exposure_ids_seen": [],
+      "correctness": {
+        "label": "correct",
+        "rationale": "The whole account matches the frozen behavior and keeps its scope bounded.",
+        "correction": null
+      },
+      "usefulness": {
+        "status": "measured",
+        "score": 4,
+        "rationale": "It explains the behavior and boundary with only minor context needed."
+      },
+      "effort": {
+        "reading": {
+          "component": "reading",
+          "unit": "milliseconds",
+          "status": "measured",
+          "value": 41000,
+          "method": "timer",
+          "unavailable_reason": null
+        },
+        "checking": {
+          "component": "checking",
+          "unit": "milliseconds",
+          "status": "measured",
+          "value": 96000,
+          "method": "timer",
+          "unavailable_reason": null
+        },
+        "correction": {
+          "component": "correction",
+          "unit": "milliseconds",
+          "status": "not_applicable",
+          "value": null,
+          "method": null,
+          "unavailable_reason": null
+        }
+      },
+      "created_at": "2026-09-13T18:08:00Z"
+    },
+    {
+      "revision_id": "revision-example-002",
+      "ordinal": 2,
+      "previous_revision_id": "revision-example-001",
+      "kind": "post_assessment",
+      "blind_status": "known_exposed",
+      "exposure_ids_seen": [
+        "exposure-example-001"
+      ],
+      "correctness": {
+        "label": "correct",
+        "rationale": "The assessment did not establish a material error.",
+        "correction": null
+      },
+      "usefulness": {
+        "status": "measured",
+        "score": 4,
+        "rationale": "The assessment did not change the account's usefulness."
+      },
+      "effort": {
+        "correction": {
+          "component": "correction",
+          "unit": "milliseconds",
+          "status": "not_applicable",
+          "value": null,
+          "method": null,
+          "unavailable_reason": null
+        }
+      },
+      "created_at": "2026-09-13T18:13:00Z"
+    }
+  ],
+  "post_assessment_observations": [
+    {
+      "observation_id": "observation-example-001",
+      "exposure_id": "exposure-example-001",
+      "assessment_id": "assessment-example-001",
+      "assessment_status": "succeeded",
+      "assessment_verdict": "disagree",
+      "true_problem_detection": false,
+      "false_alarm": true,
+      "missed_problem": false,
+      "inconclusive": false,
+      "rationale": "The alleged issue is contradicted by the frozen source.",
+      "assessment_related_effort": {
+        "component": "assessment_related",
+        "unit": "milliseconds",
+        "status": "measured",
+        "value": 121000,
+        "method": "timer",
+        "unavailable_reason": null
+      },
+      "resulting_revision_id": "revision-example-002"
+    }
+  ],
+  "started_at": "2026-09-13T18:00:00Z",
+  "completed_at": "2026-09-13T18:13:00Z"
+}

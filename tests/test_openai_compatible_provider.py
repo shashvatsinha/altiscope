@@ -73,6 +73,14 @@ def _model(*caps: str) -> ModelSpec:
     )
 
 
+def test_comparison_mode_can_disable_sdk_transport_retries():
+    provider = OpenAICompatibleProvider(
+        ProviderSpec(name="local", kind="openai_compatible", base_url="http://fake/v1"),
+        transport_retry_limit=0,
+    )
+    assert provider._client.max_retries == 0  # pyright: ignore[reportPrivateUsage]
+
+
 def test_native_mode_sends_json_schema_and_parses():
     server = FakeServer(_completion('{"headline": "h", "count": 3}'))
     result = _provider(server).generate_structured(
@@ -85,7 +93,7 @@ def test_native_mode_sends_json_schema_and_parses():
     )
     assert result.ok and result.parsed == Out(headline="h", count=3)
     assert result.output_mode == "native"
-    assert result.usage.input_tokens == 11 and result.usage.cache_read_tokens == 4
+    assert result.usage.input_tokens == 7 and result.usage.cache_read_tokens == 4
     assert result.model_id == "served-name"
     req = server.requests[0]
     assert req["model"] == "wire-name"
@@ -227,7 +235,7 @@ def test_native_failures_preserve_usage(content: str, finish: str, stop: str):
     )
     assert result.stop_reason == stop
     assert result.parsed is None
-    assert result.usage.input_tokens == 11
+    assert result.usage.input_tokens == 7
     assert result.usage.output_tokens == 7
     assert result.raw_text == content
 

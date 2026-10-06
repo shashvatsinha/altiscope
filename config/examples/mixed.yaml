@@ -17,6 +17,8 @@ models:
     max_output_tokens: 128000
     input_usd_per_mtok: 5.00
     output_usd_per_mtok: 25.00
+    cache_read_usd_per_mtok: 0.50
+    cache_write_usd_per_mtok: 6.25
     capabilities: [json_schema, reasoning_effort, token_counting]
   qwen3-235b:
     provider: vllm

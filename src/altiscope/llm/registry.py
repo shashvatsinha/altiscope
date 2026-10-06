@@ -25,6 +25,7 @@ Capability = Literal[
 ]
 
 StructuredOutputMode = Literal["native", "json_mode", "prompt"]
+ModelVersionKind = Literal["versioned", "mutable_alias", "unknown"]
 
 ProducerIndependence = Literal["none", "model", "provider"]
 
@@ -54,7 +55,15 @@ class ModelSpec(BaseModel):
     max_output_tokens: int = Field(gt=0)
     input_usd_per_mtok: float = Field(default=0, ge=0)
     output_usd_per_mtok: float = Field(default=0, ge=0)
+    cache_read_usd_per_mtok: float | None = Field(default=None, ge=0)
+    cache_write_usd_per_mtok: float | None = Field(default=None, ge=0)
     capabilities: set[Capability] = Field(default_factory=set)
+    underlying_model_id: str | None = Field(
+        default=None,
+        description="Canonical publisher/model/revision identity used for comparison independence.",
+    )
+    underlying_model_evidence: str | None = None
+    model_version_kind: ModelVersionKind = "unknown"
 
     @property
     def wire_name(self) -> str:

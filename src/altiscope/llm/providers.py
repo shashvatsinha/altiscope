@@ -6,18 +6,18 @@ from altiscope.llm.provider import Provider
 from altiscope.llm.registry import ProviderSpec, Registry
 
 
-def build_provider(spec: ProviderSpec) -> Provider:
+def build_provider(spec: ProviderSpec, *, transport_retry_limit: int | None = None) -> Provider:
     if spec.kind == "anthropic":
         # Vendor SDKs load only when their provider is configured.
         from altiscope.llm.anthropic_provider import AnthropicProvider  # noqa: PLC0415
 
-        return AnthropicProvider(spec)
+        return AnthropicProvider(spec, transport_retry_limit=transport_retry_limit)
     if spec.kind == "openai_compatible":
         from altiscope.llm.openai_compatible_provider import (  # noqa: PLC0415
             OpenAICompatibleProvider,
         )
 
-        return OpenAICompatibleProvider(spec)
+        return OpenAICompatibleProvider(spec, transport_retry_limit=transport_retry_limit)
     msg = f"unknown provider kind {spec.kind!r}"  # pyright: ignore[reportUnreachable]
     raise ValueError(msg)
 

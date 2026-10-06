@@ -17,6 +17,19 @@ class Output(BaseModel):
     text: str
 
 
+def test_comparison_mode_can_disable_sdk_transport_retries(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("ANTHROPIC_COMPARISON_TEST_KEY", "fixture-key")
+    provider = AnthropicProvider(
+        ProviderSpec(
+            name="anthropic",
+            kind="anthropic",
+            api_key_env="ANTHROPIC_COMPARISON_TEST_KEY",
+        ),
+        transport_retry_limit=0,
+    )
+    assert provider._client.max_retries == 0  # pyright: ignore[reportPrivateUsage]
+
+
 @pytest.mark.parametrize(
     ("text", "stop", "expected"),
     [

@@ -24,16 +24,29 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class AnthropicProvider:
-    def __init__(self, spec: ProviderSpec, client: anthropic.Anthropic | None = None) -> None:
+    def __init__(
+        self,
+        spec: ProviderSpec,
+        client: anthropic.Anthropic | None = None,
+        transport_retry_limit: int | None = None,
+    ) -> None:
         self.name = spec.name
         if client is not None:
             self._client = client
             return
         api_key = resolve_api_key(spec.api_key_env)
         # With api_key=None the SDK resolves ANTHROPIC_API_KEY or an auth profile itself.
-        self._client = anthropic.Anthropic(
-            api_key=api_key, base_url=spec.base_url, timeout=spec.timeout_seconds
-        )
+        if transport_retry_limit is None:
+            self._client = anthropic.Anthropic(
+                api_key=api_key, base_url=spec.base_url, timeout=spec.timeout_seconds
+            )
+        else:
+            self._client = anthropic.Anthropic(
+                api_key=api_key,
+                base_url=spec.base_url,
+                timeout=spec.timeout_seconds,
+                max_retries=transport_retry_limit,
+            )
 
     def generate_structured(
         self,

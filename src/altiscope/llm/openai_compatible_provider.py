@@ -62,25 +62,60 @@ def _schema_instruction(output_type: type[BaseModel]) -> str:
     )
 
 
+def _usage_from_completion(usage: Any) -> Usage:
+    if usage is None:
+        return Usage(0, 0)
+    details = (
+        usage.get("prompt_tokens_details")
+        if isinstance(usage, dict)
+        else usage.prompt_tokens_details
+    )
+    if isinstance(details, dict):
+        cached = details.get("cached_tokens") or 0
+        written = details.get("cache_write_tokens") or 0
+    else:
+        cached = getattr(details, "cached_tokens", 0) or 0
+        written = getattr(details, "cache_write_tokens", 0) or 0
+    prompt_tokens = (
+        usage.get("prompt_tokens") if isinstance(usage, dict) else usage.prompt_tokens
+    ) or 0
+    completion_tokens = (
+        usage.get("completion_tokens") if isinstance(usage, dict) else usage.completion_tokens
+    ) or 0
+    # Compatible APIs include cached tokens in prompt_tokens; Usage keeps the
+    # billable input buckets separate so cache tokens are never counted twice.
+    return Usage(max(0, prompt_tokens - cached - written), completion_tokens, cached, written)
+
+
 class OpenAICompatibleProvider:
     def __init__(
         self,
         spec: ProviderSpec,
         client: openai.OpenAI | None = None,
         http_client: httpx.Client | None = None,
+        transport_retry_limit: int | None = None,
     ) -> None:
         self.name = spec.name
         if client is not None:
             self._client = client
             return
         api_key = resolve_api_key(spec.api_key_env)
-        self._client = openai.OpenAI(
-            # Local servers need no key but the SDK insists on a string.
-            api_key=api_key or "not-needed",
-            base_url=spec.base_url,
-            timeout=spec.timeout_seconds,
-            http_client=http_client,
-        )
+        # Local servers need no key but the SDK insists on a string.
+        if transport_retry_limit is None:
+            self._client = openai.OpenAI(
+                api_key=api_key or "not-needed",
+                base_url=spec.base_url,
+                timeout=spec.timeout_seconds,
+                http_client=http_client,
+            )
+        else:
+            self._client = openai.OpenAI(
+                api_key=api_key or "not-needed",
+                base_url=spec.base_url,
+                timeout=spec.timeout_seconds,
+                http_client=http_client,
+                max_retries=transport_retry_limit,
+            )
 
     def generate_structured(
         self,
@@ -184,11 +219,7 @@ class OpenAICompatibleProvider:
                     raw_text=message.get("content") or "",
                     model_id=payload.get("model") or model.wire_name,
                     stop_reason=stop,
-                    usage=Usage(
-                        usage.get("prompt_tokens", 0),
-                        usage.get("completion_tokens", 0),
-                        (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0),
-                    ),
+                    usage=_usage_from_completion(usage),
                     latency_ms=int((time.monotonic() - started) * 1000),
                     output_mode=mode,
                     provider_request_id=raw_response.headers.get("x-request-id"),
@@ -229,15 +260,7 @@ class OpenAICompatibleProvider:
         if stop_reason != "end_turn":
             parsed = None
 
-        usage_obj = completion.usage
-        cached = 0
-        if usage_obj is not None and usage_obj.prompt_tokens_details is not None:
-            cached = usage_obj.prompt_tokens_details.cached_tokens or 0
-        usage = Usage(
-            input_tokens=usage_obj.prompt_tokens if usage_obj else 0,
-            output_tokens=usage_obj.completion_tokens if usage_obj else 0,
-            cache_read_tokens=cached,
-        )
+        usage = _usage_from_completion(completion.usage)
         return GenerationResult(
             parsed=parsed,
             raw_text=raw_text,
