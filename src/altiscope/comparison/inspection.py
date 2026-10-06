@@ -14,8 +14,8 @@ from psycopg import sql
 from altiscope.assessment import render_assessment
 from altiscope.review import render_frozen_source
 from altiscope.store.comparisons import list_assessments, load_result, load_source
-from altiscope.store.evaluation import load_review_record
-from altiscope.store.recipes import load_recipe
+from altiscope.store.evaluation import exposed_assessment_ids, load_review_record
+from altiscope.store.recipes import RecipeVersion, load_recipe
 
 
 def _money(value: Decimal | None, status: str) -> str:
@@ -100,10 +100,7 @@ def _review_lines(
         record = load_review_record(conn, UUID(str(row[0])))
         selected = review_session_id == UUID(str(row[0]))
         if selected:
-            exposed = {
-                str(item["assessment_id"])
-                for item in cast(list[dict[str, object]], record["exposures"])
-            }
+            exposed = exposed_assessment_ids(record)
         lines.append(
             f"    session {row[0]}: reviewer {record['reviewer_id']}; "
             f"role {record['reader_role']}; completed {record['completed_at'] or 'no'}; "
@@ -234,9 +231,18 @@ def render_comparison(  # noqa: PLR0912, PLR0915
     total_assessment_repairs = 0
     total_cost = Decimal(0)
     total_cost_complete = True
+    # Members and assessments often share recipes; load each frozen recipe once.
+    recipes: dict[UUID, RecipeVersion] = {}
+
+    def recipe_for(recipe_version_id: object) -> RecipeVersion:
+        key = UUID(str(recipe_version_id))
+        if key not in recipes:
+            recipes[key] = load_recipe(conn, key, require_executable=False)
+        return recipes[key]
+
     for member in member_rows:
         member_id, ordinal, recipe_id, label, disposition, result_id = member[:6]
-        recipe = load_recipe(conn, UUID(str(recipe_id)), require_executable=False)
+        recipe = recipe_for(recipe_id)
         targets = conn.execute(
             "SELECT recipe_version_id FROM comparison_member_baseline_targets "
             "WHERE member_id=%s ORDER BY recipe_version_id",
@@ -307,15 +313,17 @@ def render_comparison(  # noqa: PLR0912, PLR0915
         lines.extend(review_lines)
         assessments = list_assessments(conn, target_result_id=result.id)
         lines.append("  Assessments: " + (str(len(assessments)) if assessments else "not run"))
+        assessment_times_by_id = {
+            UUID(str(row[0])): (row[1], row[2])
+            for row in conn.execute(
+                "SELECT id,started_at,finished_at FROM comparison_assessments "
+                "WHERE target_result_id=%s",
+                (result.id,),
+            ).fetchall()
+        }
         for assessment in assessments:
-            assessor = load_recipe(
-                conn, assessment.assessor_recipe_version_id, require_executable=False
-            )
-            assessment_times = conn.execute(
-                "SELECT started_at,finished_at FROM comparison_assessments WHERE id=%s",
-                (assessment.id,),
-            ).fetchone()
-            assert assessment_times is not None
+            assessor = recipe_for(assessment.assessor_recipe_version_id)
+            assessment_times = assessment_times_by_id[assessment.id]
             lines.append(
                 "  " + render_assessment(assessment, reveal=str(assessment.id) in exposed).rstrip()
             )

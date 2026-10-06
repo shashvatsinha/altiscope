@@ -84,7 +84,17 @@ def _prompt_usefulness(prefix: str) -> tuple[str, int | None, str | None]:
     return status, score, rationale
 
 
-def _capture_initial_revision(conn: psycopg.Connection, session_id: UUID) -> UUID:
+def _correction_effort(correction: str) -> EffortMeasure:
+    return (
+        _prompt_effort("correction")
+        if correction
+        else EffortMeasure(component="correction", status="not_applicable")
+    )
+
+
+def _capture_initial_revision(
+    conn: psycopg.Connection, session_id: UUID, record: dict[str, object] | None = None
+) -> UUID:
     """Reload a durable session and commit its one immutable initial revision."""
     from altiscope.review import render_frozen_source, render_review_result
     from altiscope.store.comparisons import load_result, load_source
@@ -92,11 +102,12 @@ def _capture_initial_revision(conn: psycopg.Connection, session_id: UUID) -> UUI
         ReviewRevisionInput,
         append_review_revision,
         get_preparation,
+        initial_blind_status,
         load_review_record,
         save_preparation,
     )
 
-    record = load_review_record(conn, session_id)
+    record = record if record is not None else load_review_record(conn, session_id)
     revisions = cast(list[dict[str, object]], record["revisions"])
     if revisions:
         raise ValueError("review session already has an initial revision")
@@ -134,20 +145,11 @@ def _capture_initial_revision(conn: psycopg.Connection, session_id: UUID) -> UUI
         default="",
         show_default=False,
     ).strip()
-    correction_effort = (
-        _prompt_effort("correction")
-        if correction
-        else EffortMeasure(component="correction", status="not_applicable")
-    )
+    correction_effort = _correction_effort(correction)
     usefulness_status, usefulness_score, usefulness_rationale = _prompt_usefulness("Pre-assessment")
-    prior_exposure = str(record["declared_prior_assessment_exposure"])
     exposures = cast(list[dict[str, object]], record["exposures"])
-    blind_status = (
-        "confirmed_unexposed"
-        if prior_exposure == "none_declared" and not exposures
-        else "unknown"
-        if prior_exposure == "unknown"
-        else "known_exposed"
+    blind_status = initial_blind_status(
+        str(record["declared_prior_assessment_exposure"]), has_exposures=bool(exposures)
     )
     revision_id = append_review_revision(
         conn,
@@ -670,7 +672,7 @@ def reviews_resume(review_session_id: str) -> None:
         session_id = UUID(review_session_id)
         with connect(load_settings().database_url) as conn:
             record = load_review_record(conn, session_id)
-            _capture_initial_revision(conn, session_id)
+            _capture_initial_revision(conn, session_id, record)
             result_id = UUID(str(record["result_id"]))
             assessments = list_assessments(conn, target_result_id=result_id)
             if assessments:
@@ -701,7 +703,7 @@ def reviews_show(
     from altiscope.review import render_frozen_source, render_review_result
     from altiscope.store.comparisons import list_assessments, load_result, load_source
     from altiscope.store.db import connect
-    from altiscope.store.evaluation import load_review_record
+    from altiscope.store.evaluation import exposed_assessment_ids, load_review_record
 
     try:
         with connect(load_settings().database_url) as conn:
@@ -717,10 +719,7 @@ def reviews_show(
             )
             typer.echo(render_frozen_source(source), nl=False)
             typer.echo(render_review_result(result), nl=False)
-            exposed = {
-                str(item["assessment_id"])
-                for item in cast(list[dict[str, object]], record["exposures"])
-            }
+            exposed = exposed_assessment_ids(record)
             assessments = list_assessments(conn, target_result_id=result.id)
             if not assessments:
                 typer.echo("Assessment status: not_run")
@@ -811,6 +810,7 @@ def reviews_observe(
         append_review_revision,
         complete_review_session,
         load_exposure_assessment_id,
+        load_session_exposures,
         record_post_assessment_observation,
     )
 
@@ -856,16 +856,11 @@ def reviews_observe(
                     default="",
                     show_default=False,
                 ).strip()
-                correction_effort = (
-                    _prompt_effort("correction")
-                    if correction
-                    else EffortMeasure(component="correction", status="not_applicable")
+                correction_effort = _correction_effort(correction)
+                exposure_ids = tuple(
+                    UUID(str(item["exposure_id"]))
+                    for item in load_session_exposures(conn, session_uuid)
                 )
-                exposure_rows = conn.execute(
-                    "SELECT id FROM assessment_exposures WHERE review_session_id=%s "
-                    "ORDER BY ordinal",
-                    (session_uuid,),
-                ).fetchall()
                 resulting_revision_id = append_review_revision(
                     conn,
                     review_session_id=session_uuid,
@@ -885,7 +880,7 @@ def reviews_observe(
                         effort=(correction_effort,),
                         created_at=datetime.now(UTC),
                     ),
-                    exposure_ids_seen=tuple(UUID(str(item[0])) for item in exposure_rows),
+                    exposure_ids_seen=exposure_ids,
                 )
             record_post_assessment_observation(
                 conn,

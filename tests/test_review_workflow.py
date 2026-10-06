@@ -470,3 +470,38 @@ def test_cli_commits_initial_judgment_before_revealing_assessment(
     revealed = CliRunner().invoke(app, ["reviews", "reveal", session_id, str(assessment.id)])
     assert revealed.exit_code == 0, revealed.output
     assert revealed.output.index("Exposure ") < revealed.output.index("SECRET ASSESSMENT RATIONALE")
+
+
+@pytest.mark.parametrize(
+    ("declared", "has_exposures", "expected"),
+    [
+        ("none_declared", False, "confirmed_unexposed"),
+        ("none_declared", True, "known_exposed"),
+        ("known", False, "known_exposed"),
+        ("unknown", False, "unknown"),
+        ("unknown", True, "unknown"),
+    ],
+)
+def test_initial_blind_status_derivation(declared: str, has_exposures: bool, expected: str):
+    from altiscope.store.evaluation import initial_blind_status
+
+    assert initial_blind_status(declared, has_exposures=has_exposures) == expected
+
+
+@pytest.mark.parametrize(
+    ("exposure", "wrong_label", "message"),
+    [
+        ("none_declared", "known_exposed", "known-exposed requires"),
+        ("none_declared", "unknown", "unknown blind status requires"),
+        ("known", "unknown", "unknown blind status requires"),
+        ("known", "confirmed_unexposed", "confirmed-unexposed requires"),
+    ],
+)
+def test_store_rejects_blind_status_the_session_cannot_support(
+    database: str, snapshot: PullRequestSnapshot, exposure: str, wrong_label: str, message: str
+):
+    with psycopg.connect(database) as conn:
+        _, _, target = _pr_target(conn, snapshot)
+        session = _new_session(conn, result_id=target.id, exposure=exposure)
+        with pytest.raises(ValueError, match=message):
+            _initial(conn, session.id, blind=wrong_label)

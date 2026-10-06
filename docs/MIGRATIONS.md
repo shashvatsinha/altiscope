@@ -52,3 +52,15 @@ array for each frozen comparison input and backfills it from saved report lineag
 Migration `0010_comparison_execution_baselines` records immutable minimal-prompt baseline
 recipes, exact candidate-to-baseline assignments, and invocation-member labels/targets
 for later comparison inspection. It does not alter production report caches or history.
+
+## Retiring the legacy PR-source key filter
+
+`load_source` removes `snapshot` and `snapshot_source_hash` from the preparation document
+of PR comparison sources written before `freeze_pr_source` began rejecting them. The
+filter only runs when a row still has either key. It can be deleted once this returns 0
+on every deployed database:
+
+```sql
+SELECT count(*) FROM comparison_sources
+WHERE preparation_document ?| array['snapshot', 'snapshot_source_hash'];
+```

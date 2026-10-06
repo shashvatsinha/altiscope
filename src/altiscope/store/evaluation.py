@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID, uuid4
 
 import psycopg
@@ -16,6 +17,7 @@ from altiscope.store.hashing import hash_json
 from altiscope.store.source_links import historical_repository_locator
 
 ArtifactKind = Literal["protocol", "dataset", "record_contract"]
+BlindStatus = Literal["confirmed_unexposed", "known_exposed", "unknown"]
 UsefulnessStatus = Literal["measured", "unavailable", "not_applicable"]
 EffortComponent = Literal["preparation", "reading", "checking", "correction", "assessment_related"]
 
@@ -48,7 +50,7 @@ class ReviewRevisionInput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: Literal["initial_blind", "post_assessment", "adjudication"]
-    blind_status: Literal["confirmed_unexposed", "known_exposed", "unknown"]
+    blind_status: BlindStatus
     correctness_label: Literal["correct", "incorrect", "unclear"] | None = None
     correctness_rationale: str | None = None
     correction: str | None = None
@@ -284,6 +286,28 @@ def record_exposure(
     return exposure_id
 
 
+def initial_blind_status(declared_prior_exposure: str, *, has_exposures: bool) -> BlindStatus:
+    """Blind status of the initial judgment, from the declaration and recorded exposures."""
+    if declared_prior_exposure == "none_declared" and not has_exposures:
+        return "confirmed_unexposed"
+    if declared_prior_exposure == "unknown":
+        return "unknown"
+    return "known_exposed"
+
+
+def _check_blind_status(
+    status: BlindStatus, declared_prior_exposure: str, has_exposures: bool
+) -> None:
+    """Reject a label the session's recorded exposure state cannot support, in any direction."""
+    unexposed = declared_prior_exposure == "none_declared" and not has_exposures
+    if status == "confirmed_unexposed" and not unexposed:
+        raise ValueError("confirmed-unexposed requires no declared or recorded exposure")
+    if status == "known_exposed" and unexposed:
+        raise ValueError("known-exposed requires a declared or recorded exposure")
+    if status == "unknown" and declared_prior_exposure != "unknown":
+        raise ValueError("unknown blind status requires an unknown declared prior exposure")
+
+
 def append_review_revision(
     conn: psycopg.Connection,
     *,
@@ -310,10 +334,7 @@ def append_review_revision(
             raise ValueError("the first review revision must be initial_blind")
         if ordinal > 1 and revision.kind == "initial_blind":
             raise ValueError("a review session has only one initial revision")
-        if revision.blind_status == "confirmed_unexposed" and (
-            session[0] != "none_declared" or exposure_ids_seen
-        ):
-            raise ValueError("confirmed-unexposed requires no declared or recorded exposure")
+        _check_blind_status(revision.blind_status, str(session[0]), bool(exposure_ids_seen))
         exposure_rows: list[tuple[UUID, int]] = []
         for exposure_id in exposure_ids_seen:
             row = conn.execute(
@@ -518,6 +539,34 @@ def _artifact_export(
     }
 
 
+def load_session_exposures(
+    conn: psycopg.Connection, review_session_id: UUID
+) -> list[dict[str, object]]:
+    """Every assessment reveal recorded for a review session, in order."""
+    rows = conn.execute(
+        "SELECT id,ordinal,assessment_id,kind,presentation_ordinal,occurred_at "
+        "FROM assessment_exposures WHERE review_session_id=%s ORDER BY ordinal",
+        (review_session_id,),
+    ).fetchall()
+    return [
+        {
+            "exposure_id": str(item[0]),
+            "ordinal": int(item[1]),
+            "assessment_id": str(item[2]),
+            "kind": str(item[3]),
+            "presentation_ordinal": int(item[4]),
+            "occurred_at": _iso(item[5]),
+        }
+        for item in rows
+    ]
+
+
+def exposed_assessment_ids(record: Mapping[str, object]) -> set[str]:
+    """Assessments whose verdict this review session has been shown."""
+    exposures = cast(list[dict[str, object]], record["exposures"])
+    return {str(item["assessment_id"]) for item in exposures}
+
+
 def load_review_record(
     conn: psycopg.Connection, review_session_id: UUID | str
 ) -> dict[str, object]:
@@ -555,22 +604,7 @@ def load_review_record(
             "frozen_source_id": str(row[2]),
             "effort": preparation_row[1],
         }
-    exposure_rows = conn.execute(
-        "SELECT id,ordinal,assessment_id,kind,presentation_ordinal,occurred_at "
-        "FROM assessment_exposures WHERE review_session_id=%s ORDER BY ordinal",
-        (session_id,),
-    ).fetchall()
-    exposures = [
-        {
-            "exposure_id": str(item[0]),
-            "ordinal": int(item[1]),
-            "assessment_id": str(item[2]),
-            "kind": str(item[3]),
-            "presentation_ordinal": int(item[4]),
-            "occurred_at": _iso(item[5]),
-        }
-        for item in exposure_rows
-    ]
+    exposures = load_session_exposures(conn, session_id)
     revision_rows = conn.execute(
         "SELECT id,ordinal,previous_revision_id,kind,blind_status,correctness_label,"
         "correctness_rationale,correction,usefulness_status,usefulness_score,"
@@ -578,13 +612,15 @@ def load_review_record(
         "WHERE review_session_id=%s ORDER BY ordinal",
         (session_id,),
     ).fetchall()
+    seen_by_revision: dict[UUID, list[str]] = {}
+    for revision_id, exposure_id in conn.execute(
+        "SELECT revision_id,exposure_id FROM review_revision_exposures "
+        "WHERE revision_id=ANY(%s) ORDER BY revision_id,ordinal",
+        ([item[0] for item in revision_rows],),
+    ).fetchall():
+        seen_by_revision.setdefault(UUID(str(revision_id)), []).append(str(exposure_id))
     revisions: list[dict[str, object]] = []
     for item in revision_rows:
-        seen = conn.execute(
-            "SELECT exposure_id FROM review_revision_exposures "
-            "WHERE revision_id=%s ORDER BY ordinal",
-            (item[0],),
-        ).fetchall()
         effort = {measure["component"]: measure for measure in item[11]}
         revisions.append(
             {
@@ -593,7 +629,7 @@ def load_review_record(
                 "previous_revision_id": str(item[2]) if item[2] is not None else None,
                 "kind": str(item[3]),
                 "blind_status": str(item[4]),
-                "exposure_ids_seen": [str(value[0]) for value in seen],
+                "exposure_ids_seen": seen_by_revision.get(UUID(str(item[0])), []),
                 "correctness": {
                     "label": item[5],
                     "rationale": item[6],
@@ -638,7 +674,7 @@ def load_review_record(
         }
         for item in observation_rows
     ]
-    exposed_assessment_ids = {str(item["assessment_id"]) for item in exposures}
+    exposed_ids = {str(item["assessment_id"]) for item in exposures}
     assessment_rows = conn.execute(
         "SELECT id,assessor_recipe_version_id,status,verdict,rationale,error_code "
         "FROM comparison_assessments WHERE target_result_id=%s ORDER BY created_at,id",
@@ -649,9 +685,9 @@ def load_review_record(
             "assessment_id": str(item[0]),
             "assessor_recipe_version_id": str(item[1]),
             "status": str(item[2]),
-            "exposed": str(item[0]) in exposed_assessment_ids,
-            "verdict": item[3] if str(item[0]) in exposed_assessment_ids else None,
-            "rationale": item[4] if str(item[0]) in exposed_assessment_ids else None,
+            "exposed": str(item[0]) in exposed_ids,
+            "verdict": item[3] if str(item[0]) in exposed_ids else None,
+            "rationale": item[4] if str(item[0]) in exposed_ids else None,
             "error_code": item[5],
         }
         for item in assessment_rows
