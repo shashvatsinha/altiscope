@@ -28,4 +28,6 @@ link it from the old one so the reasoning remains available.
 | [0010](0010-pr-review-provenance.md) | Overall PR reports and generation history | Accepted |
 | [0011](0011-aggregate-report-provenance.md) | Record all report inputs and preserve versions | Accepted |
 | [0012](0012-recipes-and-comparison-runs.md) | Pin recipes and sources; preserve comparison results, reuse and review | Accepted |
-| [0013](0013-m3-workflow-release-scope.md) | M3 workflow demonstration and later qualified quality study | Accepted |
+| [0013](0013-m3-workflow-release-scope.md) | M3 workflow demonstration and later qualified quality study | Accepted; study scheduling superseded by 0014 |
+| [0014](0014-local-web-and-hosted-access.md) | Local M4 web use, hosted M5 connections, optional future evaluation | Accepted |
+| [0015](0015-local-web-implementation-design.md) | Local web framework, private access, request protection, progress and spend limits | Accepted |
