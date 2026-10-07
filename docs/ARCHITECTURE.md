@@ -1,6 +1,7 @@
 # Architecture
 
-Altiscope helps readers understand engineering work by summarizing merged GitHub
+Altiscope helps managers and executives understand what their teams built through
+simple-language accounts grounded in code changes. It summarizes merged GitHub
 pull requests (PRs). It first writes a report for each PR, then combines those
 reports into broader summaries. Readers can follow a summary down to the reports
 it used and eventually open the original PRs on GitHub.
@@ -17,15 +18,14 @@ PRs #35, #36, and #37. The owner accepted the engineer and manager samples for
 inclusion on 2026-09-10. See the [M2 walkthrough](M2-WALKTHROUGH.md) and
 [release evidence](releases/m2.md).
 
-The M3 integration branch also has immutable recipes, frozen comparison sources,
-reproducible comparison execution, prompt-only primary baselines, optional independent
-whole-result assessment, guided exact-result human review, and saved comparison inspection.
-M3 is not a released milestone: the final study and release evidence remain open.
-For this release, the owner chose a bounded real-source workflow demonstration;
-the selected 20-PR qualified quality study is deferred. See
-[ADR-0013](adr/0013-m3-workflow-release-scope.md) and the
-[execution plan](evaluation/m3-workflow-plan.md). This changes the evidence claim,
-not the saved-source, recipe, assessment, or review contracts.
+M3 was released on 2026-10-06 as a workflow demonstration. It includes immutable
+recipes, frozen comparison sources, reproducible comparisons, optional independent
+whole-result assessment, guided human review, and saved comparison inspection.
+It does not establish correctness or usefulness rates. See [M3 release evidence](releases/m3.md).
+
+M4 is planned as a local web application with no login or public access. M5 adds
+public hosting, login, and users authorizing their own repositories. A formal study
+is not a release gate; see [ADR-0014](adr/0014-local-web-and-hosted-access.md).
 
 | Workflow | Available now |
 |---|---|
@@ -119,7 +119,7 @@ request budget check before being sent.
 
 These checks do not establish accuracy. Readers can inspect the underlying material,
 and production reports remain labeled as unverified. Prompts ask the model to describe
-work without judging people. On the M3 integration branch, an optional independently
+work without judging people. In M3, an optional independently
 pinned model can assess a whole comparison result against the same exact saved material;
 that agreement or disagreement is evidence for human review, not factual certainty.
 
@@ -198,8 +198,10 @@ review of real generated reports. M3's versioned
 [evaluation protocol](evaluation/m3-protocol-v1.md) and
 [selected 20-PR set](evaluation/m3-eval-set-v1.md) define that future review without
 claiming it has run. The guided CLI persists the protocol's complete review records and
-conceals assessment output until an initial judgment is committed. Final source/recipe
-freeze, generation, real judgments, and reporting remain issue #50's work.
+conceals assessment output until an initial judgment is committed. M3 released a
+bounded real-source workflow demonstration; no qualified correctness/usefulness study
+was completed. A future study needs fresh held-out cases and qualified reviewers.
+It does not block M4 or M5.
 
 ## 10. Open questions
 
@@ -209,9 +211,10 @@ new PR reports. `--local-only` explicitly uses saved snapshots and does not prom
 remote completeness or freshness. GitHub does not provide a simultaneous read of an
 entire repository, so edits during collection remain an operational limitation.
 
-Later work includes rich comparison inspection, manual production input-version
-selection, feedback, private access, operational retention settings, and the web
-interface. The current decisions do not settle those product details.
+Comparison inspection is available in M3. Later work includes manual production
+input-version selection, feedback, and operational retention settings. M4 will verify
+and support private repository ingestion with the local owner's token; M5 introduces
+multi-user authorization.
 
 ## 11. M2 execution and storage
 
@@ -273,5 +276,27 @@ current reports. See [M3 recipes and comparison execution](M3-RECIPES.md) and
 [ADR-0012](adr/0012-recipes-and-comparison-runs.md).
 
 The credential-free demo uses this same engine with an in-memory store; `--persist`
-uses Postgres. Human sample review and milestone release integration remain separate
-from the automated checks. See [release evidence](releases/m2.md).
+uses Postgres. See [M3 release evidence](releases/m3.md) for the completed workflow
+demonstration and its limitations.
+
+## 13. Planned local web workflow and hosted follow-up
+
+M4 reuses production ingestion and aggregation services. The owner selects or enters
+an accessible GitHub repository, dates, and detail level, then generates or opens a
+report. The UI presents the existing report text, historical inputs, and GitHub links.
+The server holds the GitHub token; browser responses and logs never contain it.
+Private-repository permissions must be verified rather than assumed from the public
+CLI demonstrations. Saved local reports remain browsable when remote access fails,
+with freshness and failure clearly labeled.
+
+The server binds to loopback only, without login. Validate Host/Origin and protect
+state-changing requests against cross-site requests; render source text escaped.
+Reuse existing request budgeting and cost records with a configurable local spend
+limit and clear failure handling. No public allowlist, visitor accounting, mandatory
+curated-publication table, expert-review pages, or study gate is required for M4.
+Framework/rendering and execution details are settled in #85 before implementation.
+
+M5 adds login, public deployment, and user-authorized GitHub App installations.
+Access checks apply to repository selection, cached/historical reports, recursive
+inputs, and source navigation. User isolation and revocation precede public access.
+Temporal team membership and scheduled refresh are separate follow-ups.
