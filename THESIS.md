@@ -1,9 +1,10 @@
 # Thesis
 
-Engineering organizations spend substantial effort explaining work that is already
-recorded in code changes and review discussions. Altiscope's hypothesis is that these
-records can support useful accounts at several levels of detail, with evidence that
-readers can inspect, at less total effort than preparing those accounts manually.
+Altiscope helps managers and executives answer **“What did my teams build?”**
+It explains what the code changes do in simple language, using merged GitHub pull
+requests as the source. PR descriptions and discussions provide context; the code
+changes ground the account. People can judge alignment with their own intentions;
+Altiscope does not ingest a desired direction or evaluate employees.
 
 ## The cost of understanding work
 
@@ -61,7 +62,7 @@ broader evidence base. If a simpler summary saves just as much effort, the extra
 has not earned its cost. Altiscope is intended to describe work; these records are an
 inadequate basis for evaluating employees.
 
-## How to test the thesis
+## Optional future evaluation
 
 Begin with 20 real pull requests reviewed by people familiar with the work. Compare
 human-written accounts, ordinary AI summaries, and Altiscope using the same source material.
@@ -78,9 +79,10 @@ Measure three things:
 The first study can expose weaknesses. Demonstrating lasting savings requires a team
 using the system over time. M1 and M2 implement PR reports and repository summaries.
 M3's operational demonstration exercises the workflow without qualified
-MarkItDown reviewers. The human evaluation study is planned for M4, after the UX
-is available, and will need fresh held-out cases after those outputs are exposed; see
-[ADR-0013](docs/adr/0013-m3-workflow-release-scope.md).
+MarkItDown reviewers. A later human evaluation study will need fresh held-out cases after those outputs
+are exposed. It is not a release prerequisite. M4 prioritizes local web use of the
+existing reports; M5 adds hosting, login, and user-authorized repository access.
+See [ADR-0014](docs/adr/0014-local-web-and-hosted-access.md).
 
 ## Inspiration
 
