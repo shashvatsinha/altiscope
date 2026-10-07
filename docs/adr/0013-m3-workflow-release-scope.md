@@ -2,6 +2,9 @@
 
 Status: Accepted by the owner in the issue #50 working session on 2026-09-17.
 
+Follow-up: [ADR-0014](0014-local-web-and-hosted-access.md) supersedes study
+scheduling as a product release prerequisite; M3 evidence limits remain unchanged.
+
 Issue: [#50](https://github.com/shashvatsinha/altiscope/issues/50), within
 [#6](https://github.com/shashvatsinha/altiscope/issues/6).
 
