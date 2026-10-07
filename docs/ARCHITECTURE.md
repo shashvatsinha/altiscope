@@ -294,7 +294,8 @@ state-changing requests against cross-site requests; render source text escaped.
 Reuse existing request budgeting and cost records with a configurable local spend
 limit and clear failure handling. No public allowlist, visitor accounting, mandatory
 curated-publication table, expert-review pages, or study gate is required for M4.
-Framework/rendering and execution details are settled in #85 before implementation.
+The accepted framework, request protection, progress and spend design is
+[ADR-0015](adr/0015-local-web-implementation-design.md).
 
 M5 adds login, public deployment, and user-authorized GitHub App installations.
 Access checks apply to repository selection, cached/historical reports, recursive
